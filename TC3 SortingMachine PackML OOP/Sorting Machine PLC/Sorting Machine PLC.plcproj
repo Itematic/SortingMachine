@@ -39,6 +39,27 @@
     <Compile Include="01_Submodules\Cylinder\FB_CylinderBase.TcPOU">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="01_Submodules\Sensor %28signal handling%29\FB_SignalHandling.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="01_Submodules\Sensor %28signal handling%29\FB_SignalHandlingIntern.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="01_Submodules\Sensor %28signal handling%29\I_SignalHandling.TcIO">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="01_Submodules\Sensor %28signal handling%29\FB_SignalHandlingDelay.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="02_Subsystems\E_StateSeparatingAutoClamp.TcDUT">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="02_Subsystems\E_StateSortingAutoAxis.TcDUT">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="02_Subsystems\E_StateSortingAutoCylinder.TcDUT">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="PlcTask.TcTTO">
       <SubType>Code</SubType>
     </Compile>

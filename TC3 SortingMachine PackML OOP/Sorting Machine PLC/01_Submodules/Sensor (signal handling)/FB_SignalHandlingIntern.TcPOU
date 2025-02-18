@@ -1,0 +1,47 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_SignalHandlingIntern" Id="{c35e22c0-e410-47ec-91b7-8d63ca8ef2a0}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_SignalHandlingIntern IMPLEMENTS I_SignalHandling
+VAR_INPUT
+	bInputSignal					:			BOOL;					// Software intern input signal
+END_VAR
+VAR_OUTPUT
+	bOutputSignal					:			BOOL;					// Software intern output singnal, e.g. delayed, inverted
+END_VAR
+VAR
+	bEnableInputLocal				:			BOOL;					// Enabling processing of input signal
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[]]></ST>
+    </Implementation>
+    <Method Name="Enable" Id="{71a25948-8cf7-4d3c-add6-bbff29aecd02}">
+      <Declaration><![CDATA[METHOD Enable
+VAR_INPUT
+	bEnable	: BOOL;
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[	
+	bEnableInputLocal	:=		bEnable;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="SetOutput" Id="{1a938916-71d0-4536-b245-b8b41d3e1530}">
+      <Declaration><![CDATA[METHOD SetOutput
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[	
+	bOutputSignal	:=	bInputSignal AND bEnableInputLocal;]]></ST>
+      </Implementation>
+    </Method>
+    <LineIds Name="FB_SignalHandlingIntern">
+      <LineId Id="9" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SignalHandlingIntern.Enable">
+      <LineId Id="7" Count="1" />
+    </LineIds>
+    <LineIds Name="FB_SignalHandlingIntern.SetOutput">
+      <LineId Id="4" Count="1" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

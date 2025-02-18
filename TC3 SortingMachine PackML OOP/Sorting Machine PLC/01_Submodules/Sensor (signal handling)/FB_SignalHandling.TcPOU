@@ -1,0 +1,53 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_SignalHandling" Id="{5ca51423-c788-41b2-96e4-6aec8675dedb}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_SignalHandling IMPLEMENTS I_SignalHandling
+VAR_INPUT
+	bInputSignal				AT %I*		:		BOOL;			// Hardware input signal from sensor
+END_VAR
+VAR_OUTPUT
+	bOutputSignal				AT %Q*		:		BOOL;			// Hardware output singnal, e.g. delayed, inverted
+END_VAR
+VAR
+	bEnableInputLocal						:		BOOL;			// Enabling processing of input signal
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// ===========================================================================
+;
+// ===========================================================================
+]]></ST>
+    </Implementation>
+    <Method Name="Enable" Id="{d18cf4c8-bdef-4c99-a0a6-91558625e0cd}">
+      <Declaration><![CDATA[METHOD Enable
+VAR_INPUT
+	bEnable	: BOOL;
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[bEnableInputLocal := bEnable;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="SetOutput" Id="{dd8d0faa-b781-400a-acd3-32349b3c8242}">
+      <Declaration><![CDATA[METHOD SetOutput
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+	bOutputSignal		:=		bInputSignal AND bEnableInputLocal;
+]]></ST>
+      </Implementation>
+    </Method>
+    <LineIds Name="FB_SignalHandling">
+      <LineId Id="9" Count="0" />
+      <LineId Id="14" Count="0" />
+      <LineId Id="16" Count="0" />
+      <LineId Id="15" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SignalHandling.Enable">
+      <LineId Id="7" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SignalHandling.SetOutput">
+      <LineId Id="4" Count="2" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

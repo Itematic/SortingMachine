@@ -1,0 +1,65 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_SignalHandlingDelay" Id="{06a2ad3f-9776-43e7-8e5a-9eb687aa8e24}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_SignalHandlingDelay EXTENDS FB_SignalHandling
+VAR_INPUT
+	tDelay						:			TIME;				// Time to delay input signal
+END_VAR
+VAR_OUTPUT
+END_VAR
+VAR
+	bStartProcessingDelay		:			BOOL;				// Bit for releasing processing of input delay
+	fbTimerDelay				:			TON;				// Timer to control processing delay of input signal
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[]]></ST>
+    </Implementation>
+    <Method Name="SetOutput" Id="{56e929ac-4eee-47f6-839e-14434f37a3af}">
+      <Declaration><![CDATA[METHOD SetOutput
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[	IF bInputSignal AND bEnableInputLocal THEN
+		bStartProcessingDelay 	:= 		TRUE;
+	END_IF
+
+	IF	bStartProcessingDelay THEN
+		fbTimerDelay(	IN		:=		TRUE,
+						PT		:=		tDelay);
+	ELSE
+		fbTimerDelay(	IN		:=		FALSE);
+	END_IF
+
+	IF fbTimerDelay.Q THEN
+		bStartProcessingDelay	:=		FALSE;
+
+		fbTimerDelay(	IN		:=		FALSE);	 
+		
+		bOutputSignal			:=		TRUE;
+	ELSE
+		bOutputSignal			:=		FALSE;
+	END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <LineIds Name="FB_SignalHandlingDelay">
+      <LineId Id="9" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SignalHandlingDelay.SetOutput">
+      <LineId Id="4" Count="0" />
+      <LineId Id="6" Count="2" />
+      <LineId Id="5" Count="0" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="11" Count="2" />
+      <LineId Id="10" Count="0" />
+      <LineId Id="14" Count="0" />
+      <LineId Id="17" Count="0" />
+      <LineId Id="15" Count="0" />
+      <LineId Id="22" Count="0" />
+      <LineId Id="21" Count="0" />
+      <LineId Id="20" Count="0" />
+      <LineId Id="19" Count="0" />
+      <LineId Id="23" Count="1" />
+      <LineId Id="18" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

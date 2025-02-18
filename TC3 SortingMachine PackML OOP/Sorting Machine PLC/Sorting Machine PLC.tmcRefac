@@ -21,5 +21,25 @@
       <From>POU</From>
       <To>FB_CylinderBase</To>
     </RenamedType>
+    <RenamedType>
+      <Type guid="385c8dee-18f9-4cdd-85b3-ef3b0ac92ac8">BENABLE</Type>
+      <From>bEnable</From>
+      <To>Enable</To>
+    </RenamedType>
+    <RenamedSymbol>
+      <Type guid="5ca51423-c788-41b2-96e4-6aec8675dedb">FB_SignalHandling</Type>
+      <From>bOutput</From>
+      <To>bOutputSignal</To>
+    </RenamedSymbol>
+    <RenamedSymbol>
+      <Type guid="5ca51423-c788-41b2-96e4-6aec8675dedb">FB_SignalHandling</Type>
+      <From>bEnableInput</From>
+      <To>bEnableInputLocal</To>
+    </RenamedSymbol>
+    <RenamedType>
+      <Type guid="06a2ad3f-9776-43e7-8e5a-9eb687aa8e24">POU</Type>
+      <From>POU</From>
+      <To>FB_SignalHandlingDelay</To>
+    </RenamedType>
   </Renames>
 </Refactors>

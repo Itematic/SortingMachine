@@ -1,0 +1,15 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="E_StateSortingAutoCylinder" Id="{21137489-978a-42bf-83d4-491a225528ab}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+{attribute 'strict'}
+TYPE E_StateSortingAutoCylinder :
+(
+	BoxDetected 			:= 0,
+	MoveCylToWorkPos,
+	MoveCylToBasePos
+);
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>
