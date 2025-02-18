@@ -6,5 +6,20 @@
       <From>MoveFw_1</From>
       <To>MoveBw</To>
     </RenamedType>
+    <RenamedSymbol>
+      <Type guid="27692f1f-fa73-43e8-89a4-19c70e80f4d6">FB_CylinderDiag</Type>
+      <From>nTime</From>
+      <To>nTimeOut</To>
+    </RenamedSymbol>
+    <RenamedSymbol>
+      <Type guid="663cafa0-e5e6-4d81-a8fe-461c8f79e9a1">FB_CylinderTempRecord</Type>
+      <From>bRecordDone</From>
+      <To>bRecordFullDone</To>
+    </RenamedSymbol>
+    <RenamedType>
+      <Type guid="06a0551f-8b6e-453f-a160-073165307183">FB_CYLINDER</Type>
+      <From>POU</From>
+      <To>FB_CylinderBase</To>
+    </RenamedType>
   </Renames>
 </Refactors>

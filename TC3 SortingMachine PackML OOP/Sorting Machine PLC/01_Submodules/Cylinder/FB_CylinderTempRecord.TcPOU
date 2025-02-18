@@ -1,0 +1,85 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_CylinderTempRecord" Id="{663cafa0-e5e6-4d81-a8fe-461c8f79e9a1}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_CylinderTempRecord EXTENDS FB_CylinderTemp
+VAR_INPUT
+	bRecordStart				:	BOOL;							// Signal to start recording temperature
+	nTimeInterval				:	TIME;							// Time interval between samples of temperature
+END_VAR
+VAR_OUTPUT
+	bRecordFullDone				:	BOOL;							// TRUE if the temperature recording is done
+	aRecords					:	ARRAY [1..100] OF	LREAL;		//	Array with temperature records
+END_VAR
+VAR
+	nIndex						:	UDINT;							// Index to handle temperature array
+	fbTimerInterval				:	TON;							// Timer to control the recording interval
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// ===================================================================
+;
+// ===================================================================]]></ST>
+    </Implementation>
+    <Method Name="Record" Id="{b629170c-9f79-4b11-9032-d566512463bc}">
+      <Declaration><![CDATA[METHOD Record
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+	bRecordFullDone := (nIndex := 100);
+
+	IF bRecordStart AND NOT bRecordFullDone AND NOT fbTimerInterval.Q THEN
+		fbTimerInterval(	IN		:=		TRUE,
+							PT		:=		fbTimerInterval);
+	END_IF
+	
+	IF fbTimerInterval.Q THEN
+		fbTimerInterval(	IN		:=		FALSE);
+		
+		nIndex					:=		nIndex + 1;
+		aRecords[nIndex]		:=		fTempCurrent;
+	END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Reset" Id="{be66d682-a1e9-4c53-9139-cb671f3b3da7}">
+      <Declaration><![CDATA[METHOD Reset
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[	SUPER^.Reset();
+
+	FOR nIndex	:= 1 TO 100 BY 1 DO
+		aRecords[nIndex]	:=	0;
+	END_FOR
+
+	nIndex		:= 		0;]]></ST>
+      </Implementation>
+    </Method>
+    <LineIds Name="FB_CylinderTempRecord">
+      <LineId Id="9" Count="0" />
+      <LineId Id="16" Count="1" />
+    </LineIds>
+    <LineIds Name="FB_CylinderTempRecord.Record">
+      <LineId Id="12" Count="0" />
+      <LineId Id="11" Count="0" />
+      <LineId Id="13" Count="0" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="6" Count="0" />
+      <LineId Id="8" Count="0" />
+      <LineId Id="7" Count="0" />
+      <LineId Id="14" Count="2" />
+      <LineId Id="18" Count="2" />
+      <LineId Id="17" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_CylinderTempRecord.Reset">
+      <LineId Id="6" Count="0" />
+      <LineId Id="11" Count="0" />
+      <LineId Id="10" Count="0" />
+      <LineId Id="8" Count="1" />
+      <LineId Id="7" Count="0" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

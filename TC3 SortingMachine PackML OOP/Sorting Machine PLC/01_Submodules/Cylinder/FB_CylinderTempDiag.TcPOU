@@ -1,0 +1,111 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_CylinderTempDiag" Id="{e448bdd6-215b-4669-ac4e-f2fc2daf26a0}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_CylinderTempDiag EXTENDS FB_CylinderTemp
+VAR_INPUT
+	fTempMin			:		LREAL;					// Global value:	minimal allowed cylinder temperature for temperature monitoring
+	fTempMax			:		LREAL;					// Global value:	maximal allowed cylinder temperature for temperature monitoring
+END_VAR
+VAR_OUTPUT
+	bError				:		BOOL;					// Error signal		(diagnosed from temperature monitoring)
+	sErrorMsg			:		STRING;					// Error message
+	nErrorID			:		UDINT;					// Error ID
+END_VAR
+VAR
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[]]></ST>
+    </Implementation>
+    <Method Name="Diag" Id="{073f25e6-e23c-42a2-91dd-fe77e9b46a98}">
+      <Declaration><![CDATA[METHOD Diag
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[IF fTempCurrent > fTempMax OR fTempCurrent < fTempMin	THEN
+	bError	:=	TRUE;
+ELSE
+	bError	:=	FALSE;
+END_IF
+
+IF bError	THEN
+	IF		fTempCurrent > fTempMax	THEN
+			sErrorMsg	:=		'Temperature above maximum';
+			nErrorID	:=		94;
+	ELSIF	fTempCurrent < fTempMin	THEN
+			sErrorMsg	:=		'Temperature below minimum';
+			nErrorID	:=		93;
+	END_IF
+ELSE
+	sErrorMsg		:=	'';
+	nErrorID		:=	0;
+END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Reset" Id="{e1d57925-d9dd-485b-a81e-091364fdb114}">
+      <Declaration><![CDATA[METHOD Reset
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[SUPER^.Reset();
+
+bError			:=		FALSE;
+sErrorMsg		:=		'';
+nErrorID		:=		0;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="StateMachine" Id="{10be3644-55f4-4439-8c92-9ae5d4b3e963}">
+      <Declaration><![CDATA[METHOD PROTECTED StateMachine
+VAR_INPUT
+	bBasePosReq		:	BOOL;
+	bWorkPosReq		:	BOOL;
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[IF NOT bError THEN
+	// Calling StateMachine() method of parental class FB_Cylinder
+	SUPER^.StateMachine(	bBasePosReq			:=		bBasePosReq,
+							bWorkPosReq			:=		bWorkPosReq);
+	
+	// Diagnosis evaluation by every movement of cylinder							
+	Diag();
+END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <LineIds Name="FB_CylinderTempDiag">
+      <LineId Id="9" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_CylinderTempDiag.Diag">
+      <LineId Id="5" Count="1" />
+      <LineId Id="8" Count="1" />
+      <LineId Id="7" Count="0" />
+      <LineId Id="11" Count="0" />
+      <LineId Id="10" Count="0" />
+      <LineId Id="12" Count="0" />
+      <LineId Id="14" Count="0" />
+      <LineId Id="18" Count="0" />
+      <LineId Id="16" Count="1" />
+      <LineId Id="19" Count="0" />
+      <LineId Id="15" Count="0" />
+      <LineId Id="20" Count="2" />
+      <LineId Id="13" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_CylinderTempDiag.Reset">
+      <LineId Id="5" Count="0" />
+      <LineId Id="7" Count="0" />
+      <LineId Id="6" Count="0" />
+      <LineId Id="8" Count="1" />
+    </LineIds>
+    <LineIds Name="FB_CylinderTempDiag.StateMachine">
+      <LineId Id="7" Count="0" />
+      <LineId Id="14" Count="0" />
+      <LineId Id="8" Count="0" />
+      <LineId Id="10" Count="1" />
+      <LineId Id="13" Count="0" />
+      <LineId Id="12" Count="0" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

@@ -21,6 +21,24 @@
     <Compile Include="01_Submodules\Axis\FB_Axis.TcPOU">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="01_Submodules\Cylinder\FB_CylinderDiag.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="01_Submodules\Cylinder\FB_CylinderTemp.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="01_Submodules\Cylinder\FB_CylinderTempDiag.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="01_Submodules\Cylinder\FB_CylinderTempRecord.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="01_Submodules\Cylinder\I_Cylinder.TcIO">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="01_Submodules\Cylinder\FB_CylinderBase.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="PlcTask.TcTTO">
       <SubType>Code</SubType>
     </Compile>
@@ -32,7 +50,7 @@
     <Folder Include="01_Submodules" />
     <Folder Include="01_Submodules\Axis" />
     <Folder Include="01_Submodules\Cylinder" />
-    <Folder Include="01_Submodules\Signal handling" />
+    <Folder Include="01_Submodules\Sensor %28signal handling%29" />
     <Folder Include="02_Subsystems" />
     <Folder Include="03_Machine" />
     <Folder Include="VISUs" />
