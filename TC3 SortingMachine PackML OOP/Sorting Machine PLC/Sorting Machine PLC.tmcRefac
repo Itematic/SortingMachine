@@ -1,0 +1,10 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Refactors>
+  <Renames>
+    <RenamedType>
+      <Type guid="a783e9b0-c4cb-42e5-9e17-a4b39013e7dc">MOVEFW_1</Type>
+      <From>MoveFw_1</From>
+      <To>MoveBw</To>
+    </RenamedType>
+  </Renames>
+</Refactors>

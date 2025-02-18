@@ -1,0 +1,396 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_Axis" Id="{6c8846af-ad09-42ea-ac30-58778bca0d31}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_Axis
+VAR_OUTPUT
+	bError			:	BOOL;				//Error signal
+	nErrorID		:	UDINT;				//Error ID
+	bMoving			:	BOOL;				// Status of moving
+END_VAR
+VAR
+	bResetDone		:	BOOL;				// Status of function block MC_Reset
+	bHaltDone		:	BOOL;				// Status of function block MC_Halt
+
+	bStatusEnable	:	BOOL;				// Enable feedback
+	
+	fVelocity		:	LREAL;				// Target velocity
+	fOverride		:	LREAL := 100;		// Override 100%
+	
+	fbTriggerHalt	:	R_TRIG;				// Trigger to recognize rising edge of halt input
+	fbTriggerReset	:	R_TRIG;				// Trigger to recognize rising edge of reset input
+	
+	AxisRef			:	AXIS_REF;			// Axis reference (process data plc/nc)
+	
+	//=============== Motion function blocks =====================
+	fbMcPower		:	MC_Power;			// FB for enable and override
+	fbMcReset		:	MC_Reset;			// FB to reset axis (errors)
+	fbMcStop		:	MC_Stop;				// FB to stop axis
+	fbMcHalt		:	MC_Halt;				// FB to halt axis
+	fbMcMove		:	Mc_MoveVelocity;	// FB to move axis (velocity movement)
+	fbMcMoveAbsolute :	Mc_MoveAbsolute;	// FB to move axis (absolute position)
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[]]></ST>
+    </Implementation>
+    <Property Name="bState_Enable" Id="{cd309e48-5f46-43f7-8c5f-38c97dbe91a3}">
+      <Declaration><![CDATA[PROPERTY bState_Enable : BOOL]]></Declaration>
+      <Get Name="Get" Id="{44efe57e-5c77-4d97-a9f5-87e818569938}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[bState_Enable := bStatusEnable;]]></ST>
+        </Implementation>
+      </Get>
+    </Property>
+    <Property Name="bState_HaltDone" Id="{d8afc25b-a64c-4b9f-83bf-134bde42221b}">
+      <Declaration><![CDATA[PROPERTY bState_HaltDone : BOOL]]></Declaration>
+      <Get Name="Get" Id="{f9e3e88c-d7b9-441d-b557-bad23cd20934}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[bState_HaltDone := bHaltDone;]]></ST>
+        </Implementation>
+      </Get>
+    </Property>
+    <Property Name="bState_ResetDone" Id="{4c75998b-c40e-4509-80ad-9daefe9db7c9}">
+      <Declaration><![CDATA[PROPERTY bState_ResetDone : BOOL]]></Declaration>
+      <Get Name="Get" Id="{c50b97b6-3014-48f3-88f6-bbfa1ae68ccc}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[bState_ResetDone := bResetDone;]]></ST>
+        </Implementation>
+      </Get>
+    </Property>
+    <Method Name="Enable" Id="{11193f3f-f540-4489-a639-5127b8d49d56}">
+      <Declaration><![CDATA[METHOD Enable
+VAR_INPUT
+	bEnable		:		BOOL;
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[fbMcPower(	Axis 			:= THIS^.AxisRef,
+			Enable 			:=  bEnable,
+			Enable_Positive := bEnable,
+			Enable_Negative := bEnable,
+			Override 		:= THIS^.fOverride,
+			Status 			=> THIS^.bStatusEnable);
+			
+IF fbMcPower.Error THEN
+	bError		:= TRUE;
+	nErrorID	:= fbMcPower.ErrorID;
+END_IF
+
+AxisRef.ReadStatus();		// Axis internal method to read its status
+
+THIS^.bMoving := AxisRef.Status.Moving;]]></ST>
+      </Implementation>
+    </Method>
+    <Property Name="fTargetVelocity" Id="{652d5236-2979-48da-a9f1-d13a0a90f62f}">
+      <Declaration><![CDATA[PROPERTY fTargetVelocity : LREAL]]></Declaration>
+      <Get Name="Get" Id="{b936ae19-6acb-4c8d-9ec0-2a49bb0e0b26}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[fTargetVelocity := fVelocity;]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{f58b27e8-4200-4ceb-8453-506e7d075242}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[fVelocity := fTargetVelocity;]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Method Name="Halt" Id="{f9112d11-079e-466e-84db-189b8da28e33}">
+      <Declaration><![CDATA[METHOD Halt
+VAR_INPUT
+	bDriveHalt	:	BOOL;
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// Move axis command set to FALSE
+IF bDriveHalt THEN
+	THIS^.fbMcMove( Axis 				:= THIS^.AxisRef,
+					Execute 			:= FALSE);
+	// ?? Move Absolute Execute FALSE ??
+	THIS^.fbMcMoveAbsolute( Axis 		:= THIS^.AxisRef,
+							Execute 	:= FALSE);		
+ELSE
+	THIS^.bHaltDone := FALSE;				
+END_IF
+
+//Trigger
+THIS^.fbTriggerHalt(CLK := bDriveHalt);
+
+IF THIS^.fbTriggerHalt.Q THEN
+	THIS^.fbMcHalt( Axis			:= THIS^.AxisRef,
+					Execute			:= TRUE);
+ELSE
+	THIS^.fbMcHalt( Axis			:= THIS^.AxisRef);
+END_IF
+
+// Done / Error / Aborted
+IF THIS^.fbMcHalt.Done OR THIS^.fbMcHalt.Error OR THIS^.fbMcHalt.CommandAborted THEN
+	THIS^.bError		:= THIS^.fbMcHalt.Error;
+	THIS^.nErrorID		:= THIS^.fbMcHalt.ErrorID;
+	THIS^.bHaltDone		:= THIS^.fbMcHalt.Done;
+
+	THIS^.fbMcHalt( Axis 		:= THIS^.AxisRef,
+					Execute		:= FALSE);
+END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="MoveBw" Id="{a783e9b0-c4cb-42e5-9e17-a4b39013e7dc}">
+      <Declaration><![CDATA[METHOD MoveBw
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[IF NOT THIS^.fbMcMove.Error THEN
+	fbMcMove(	Axis		:= THIS^.AxisRef,
+				Execute		:= TRUE,
+				Direction	:= MC_Negative_Direction,
+				Velocity	:= THIS^.fVelocity);
+END_IF
+
+// Error / Command aborted
+IF THIS^.fbMcMove.Error OR THIS^.fbMcMove.CommandAborted THEN
+	THIS^.bError			:= THIS^.fbMcMove.Error;
+	THIS^.nErrorID			:= THIS^.fbMcMove.ErrorID;
+END_IF
+
+	fbMcMove(	Axis		:= THIS^.AxisRef,
+				Execute		:= FALSE);]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="MoveFw" Id="{85439bc6-9d48-4242-b8ca-4942cbad842a}">
+      <Declaration><![CDATA[METHOD MoveFw
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[IF NOT THIS^.fbMcMove.Error THEN
+	fbMcMove(	Axis		:= THIS^.AxisRef,
+				Execute		:= TRUE,
+				Direction	:= MC_Positive_Direction,
+				Velocity	:= THIS^.fVelocity);
+END_IF
+
+// Error / Command aborted
+IF THIS^.fbMcMove.Error OR THIS^.fbMcMove.CommandAborted THEN
+	THIS^.bError			:= THIS^.fbMcMove.Error;
+	THIS^.nErrorID			:= THIS^.fbMcMove.ErrorID;
+END_IF
+
+	fbMcMove(	Axis		:= THIS^.AxisRef,
+				Execute		:= FALSE);]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Reset" Id="{e170a953-3cb8-44ac-a18c-770eddd0d1c2}">
+      <Declaration><![CDATA[METHOD Reset
+VAR_INPUT
+	bDriveReset		:	BOOL;	// Request reset
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[IF NOT bDriveReset THEN
+	THIS^.bResetDone := FALSE;
+END_IF
+
+// Trigger
+THIS^.fbTriggerReset(CLK 		:= bDriveReset);
+
+IF THIS^.fbTriggerReset.Q THEN
+	THIS^.bResetDone := FALSE;
+	THIS^.fbMcReset(Axis 		:= THIS^.AxisRef,
+					Execute 	:= TRUE);
+ELSE
+	THIS^.fbMcReset(Axis 		:= THIS^.AxisRef);
+END_IF
+
+// Done / Error
+IF THIS^.fbMcReset.Done OR THIS^.fbMcReset.Error THEN
+	THIS^.bResetDone 			:= THIS^.fbMcReset.Done;
+	THIS^.bError		 		:= THIS^.fbMcReset.Error;
+	
+	THIS^.fbMcReset (Axis 		:= THIS^.AxisRef,
+					Execute 	:= FALSE);
+END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Stop" Id="{8a05423b-97ae-4aab-ad6a-e9217e3f8502}">
+      <Declaration><![CDATA[METHOD Stop
+VAR_INPUT
+	bDriveStop	:	BOOL;		// Request drive stop
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[IF bDriveStop THEN
+	// Move Execute FALSE
+	THIS^.fbMcMove( Axis 				:= THIS^.AxisRef,
+					Execute 			:= FALSE);			
+	// ?? Move Absolute Execute FALSE ??
+	THIS^.fbMcMoveAbsolute( Axis 		:= THIS^.AxisRef,
+							Execute 	:= FALSE);			
+
+ELSE
+	THIS^.bHaltDone := FALSE;
+END_IF
+
+// Trigger
+THIS^.fbTriggerHalt(CLK := bDriveStop);
+
+IF fbTriggerHalt.Q THEN
+	THIS^.fbMcStop( Axis 		:= THIS^.AxisRef,
+					Execute 	:= TRUE);
+END_IF
+
+// Done / Error / Command aborted
+IF THIS^.fbMcStop.Done OR THIS^.fbMcStop.Error OR THIS^.fbMcStop.CommandAborted THEN
+	THIS^.bError				:= THIS^.fbMcStop.Error;
+	THIS^.bError				:= THIS^.fbMcStop.Error;
+	THIS^.bHaltDone				:= THIS^.fbMcStop.Done;
+	
+	THIS^.fbMcStop( Axis 		:= THIS^.AxisRef,
+					Execute 	:= FALSE);
+	
+END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <LineIds Name="FB_Axis">
+      <LineId Id="9" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_Axis.bState_Enable.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_Axis.bState_HaltDone.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_Axis.bState_ResetDone.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_Axis.Enable">
+      <LineId Id="12" Count="0" />
+      <LineId Id="7" Count="4" />
+      <LineId Id="13" Count="2" />
+      <LineId Id="17" Count="0" />
+      <LineId Id="16" Count="0" />
+      <LineId Id="19" Count="0" />
+      <LineId Id="18" Count="0" />
+      <LineId Id="21" Count="0" />
+      <LineId Id="20" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_Axis.fTargetVelocity.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_Axis.fTargetVelocity.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_Axis.Halt">
+      <LineId Id="14" Count="0" />
+      <LineId Id="5" Count="0" />
+      <LineId Id="7" Count="0" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="39" Count="1" />
+      <LineId Id="38" Count="0" />
+      <LineId Id="10" Count="1" />
+      <LineId Id="8" Count="0" />
+      <LineId Id="13" Count="0" />
+      <LineId Id="12" Count="0" />
+      <LineId Id="15" Count="0" />
+      <LineId Id="17" Count="0" />
+      <LineId Id="16" Count="0" />
+      <LineId Id="37" Count="0" />
+      <LineId Id="20" Count="2" />
+      <LineId Id="19" Count="0" />
+      <LineId Id="24" Count="0" />
+      <LineId Id="23" Count="0" />
+      <LineId Id="25" Count="1" />
+      <LineId Id="28" Count="1" />
+      <LineId Id="31" Count="0" />
+      <LineId Id="30" Count="0" />
+      <LineId Id="32" Count="0" />
+      <LineId Id="27" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_Axis.MoveBw">
+      <LineId Id="5" Count="1" />
+      <LineId Id="8" Count="2" />
+      <LineId Id="7" Count="0" />
+      <LineId Id="12" Count="0" />
+      <LineId Id="11" Count="0" />
+      <LineId Id="13" Count="1" />
+      <LineId Id="16" Count="0" />
+      <LineId Id="15" Count="0" />
+      <LineId Id="18" Count="0" />
+      <LineId Id="17" Count="0" />
+      <LineId Id="19" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_Axis.MoveFw">
+      <LineId Id="5" Count="1" />
+      <LineId Id="8" Count="2" />
+      <LineId Id="7" Count="0" />
+      <LineId Id="12" Count="0" />
+      <LineId Id="11" Count="0" />
+      <LineId Id="13" Count="1" />
+      <LineId Id="16" Count="0" />
+      <LineId Id="15" Count="0" />
+      <LineId Id="18" Count="0" />
+      <LineId Id="17" Count="0" />
+      <LineId Id="19" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_Axis.Reset">
+      <LineId Id="5" Count="0" />
+      <LineId Id="10" Count="1" />
+      <LineId Id="13" Count="0" />
+      <LineId Id="12" Count="0" />
+      <LineId Id="14" Count="0" />
+      <LineId Id="16" Count="0" />
+      <LineId Id="15" Count="0" />
+      <LineId Id="22" Count="0" />
+      <LineId Id="17" Count="0" />
+      <LineId Id="19" Count="2" />
+      <LineId Id="18" Count="0" />
+      <LineId Id="24" Count="0" />
+      <LineId Id="23" Count="0" />
+      <LineId Id="25" Count="1" />
+      <LineId Id="28" Count="3" />
+      <LineId Id="27" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_Axis.Stop">
+      <LineId Id="5" Count="0" />
+      <LineId Id="21" Count="0" />
+      <LineId Id="14" Count="1" />
+      <LineId Id="23" Count="2" />
+      <LineId Id="22" Count="0" />
+      <LineId Id="7" Count="0" />
+      <LineId Id="13" Count="0" />
+      <LineId Id="8" Count="0" />
+      <LineId Id="10" Count="0" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="12" Count="0" />
+      <LineId Id="17" Count="0" />
+      <LineId Id="16" Count="0" />
+      <LineId Id="18" Count="0" />
+      <LineId Id="20" Count="0" />
+      <LineId Id="19" Count="0" />
+      <LineId Id="36" Count="0" />
+      <LineId Id="27" Count="0" />
+      <LineId Id="26" Count="0" />
+      <LineId Id="28" Count="0" />
+      <LineId Id="31" Count="0" />
+      <LineId Id="30" Count="0" />
+      <LineId Id="32" Count="0" />
+      <LineId Id="34" Count="1" />
+      <LineId Id="33" Count="0" />
+      <LineId Id="29" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>
