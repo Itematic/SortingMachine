@@ -1,0 +1,365 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_SubsystemRoot" Id="{4dc93a21-1cda-4a4e-8907-04bad7ededf2}" SpecialFunc="None">
+    <Declaration><![CDATA[// Base class of modules with AXIS and BUTTONS for manual control
+FUNCTION_BLOCK FB_SubsystemRoot
+VAR_INPUT
+	bButtonAxisFwIn					:		BOOL;						// Signal of button to move axis forwards
+	bButtonAxisBwIn					:		BOOL;						// Signal of button to move axis beckwards
+END_VAR
+VAR_OUTPUT
+	bAxisError						:		BOOL;						// Error signal of axis
+	nAxisErrorID					:		UDINT;						// Error ID of axis error
+	
+	bAxisMoves						:		BOOL;						// True if axis is moving
+	
+	bButtonAxisFwOut				:		BOOL;						// Processed signal from button to move axis forward 
+	bButtonAxisBwOut				:		BOOL;						// Processed signal from button to move axis backward
+END_VAR
+VAR
+	bHaltDone						:		BOOL;						// True if module is stopped
+	bResetDone						:		BOOL;						// True if module is reseted
+	bStartingDone					:		BOOL;						// True if module is started
+	
+	bCompresAirEnableLocal			:		BOOL;						// Enable of compressed air
+	bAxisEnableLocal				:		BOOL;						// Enable of axis
+	bSensorEnableLocal				:		BOOL;						// Enable of sensor
+	bManualAxisEnableLocal			:		BOOL;						// Enable of manual axis control
+	bManualCylinderEnableLocal		:		BOOL;						// Enable of manual cylinder control (not in the input of THIS^.Enable() )
+	
+	bHaltRequest					:		BOOL;						// True if machine is in state ABORTING or STOPPING
+	bResetRequest					:		BOOL;						// True if machine is in state RESETTING
+	
+	// ============== Axis ========================================
+	fbAxis							:		FB_Axis;					// Axis instance
+	fAxisVelo						:		LREAL;						// Velocity of axis
+	
+	// ============ Manual axis control ==============================
+	fbButtonAxisFw					:		FB_SignalHandlingIntern;	// Move axis forward
+	fbButtonAxisBw					:		FB_SignalHandlingIntern;	// Move axis backward
+
+	// ============ Common varaibles ==============================
+	bAxisMoved						:		BOOL;						// History variable to save if axis has moved marker
+	fbTriggerResetStart				:		R_TRIG;						// To diagnose rising edge of starting reset
+	fbTriggerStartingStart			:		R_TRIG;						// To diagnose rising edge of starting start
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// ===========================================================================
+;
+// ===========================================================================]]></ST>
+    </Implementation>
+    <Property Name="bState_HaltDone" Id="{9eb57c86-9cef-4715-8bc7-8e084fb0bf7d}">
+      <Declaration><![CDATA[PROPERTY bState_HaltDone : BOOL]]></Declaration>
+      <Get Name="Get" Id="{6b25250d-7cb3-41fc-9573-1709efe41416}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[bState_HaltDone := bHaltDone;]]></ST>
+        </Implementation>
+      </Get>
+    </Property>
+    <Property Name="bState_ResetDone" Id="{83d046a1-fe89-4158-92ef-bfaf07d76e7f}">
+      <Declaration><![CDATA[PROPERTY bState_ResetDone : BOOL]]></Declaration>
+      <Get Name="Get" Id="{03d52b67-de76-42ec-8e0f-c1968cdcedbc}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[bState_ResetDone := bResetDone;]]></ST>
+        </Implementation>
+      </Get>
+    </Property>
+    <Property Name="bState_StartingDone" Id="{a671613d-a8f5-4abb-80d5-66f0f0388c16}">
+      <Declaration><![CDATA[PROPERTY bState_StartingDone : BOOL]]></Declaration>
+      <Get Name="Get" Id="{a6aa7932-1306-4d6b-935c-ed0cad92c46f}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[bState_StartingDone := bStartingDone;]]></ST>
+        </Implementation>
+      </Get>
+    </Property>
+    <Method Name="Enable" Id="{74d80892-2b26-4dc7-97d6-4548e4bdb8ec}">
+      <Declaration><![CDATA[METHOD Enable
+VAR_INPUT
+	bComprAirEnable					:			BOOL;			// Enable of compressed air
+	bAxisEnable						:			BOOL;			// Enable of axis
+	bSensorEnable					:			BOOL;			// Enable of sensor
+	bManualAxisEnable				:			BOOL;			// Enable manual axis control
+END_VAR
+
+VAR
+	bManualEnable: BOOL;
+END_VAR]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[	// Store inputs in local variables
+	bCompresAirEnableLocal				:=				bComprAirEnable;
+	bAxisEnableLocal					:=				bAxisEnable;
+	bSensorEnableLocal					:=				bSensorEnable;
+	bManualAxisEnableLocal				:=				bManualAxisEnable;
+	
+	// Axis enable
+	fbAxis.Enable(bEnable				:=				bAxisEnableLocal);
+	
+	// Cylinder manual control enable 
+	bManualCylinderEnableLocal			:=				bManualAxisEnableLocal		AND		bCompresAirEnableLocal;
+	
+	// Control buttons (enable Signal Handling)
+	fbButtonAxisFw.Enable(bEnable		:=				bManualAxisEnableLocal		AND NOT fbButtonAxisBw.bOutputSignal);
+	fbButtonAxisBw.Enable(bEnable		:=				bManualAxisEnableLocal		AND NOT fbButtonAxisFw.bOutputSignal);
+]]></ST>
+      </Implementation>
+    </Method>
+    <Property Name="fAxisVelocity" Id="{1bdb0690-f36c-43ab-a8ac-90e96e16b4b2}">
+      <Declaration><![CDATA[PROPERTY fAxisVelocity : LREAL]]></Declaration>
+      <Get Name="Get" Id="{f1cb0df4-1d98-4c37-b977-c6a737aed922}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[fAxisVelocity := fAxisVelo;]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{67effab5-acdc-48f8-817c-8e8412c3055b}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[fAxisVelo := fAxisVelocity;]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Method Name="Halt" Id="{d5340b6f-c6bd-4b03-8186-c476ed3dc661}">
+      <Declaration><![CDATA[METHOD Halt : BOOL
+VAR_INPUT
+	bHalt				:			BOOL;				// True if machine is in STATE ABORTING or STOPPING
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[	// Store halt request
+	bHaltRequest				:=		bHalt;
+	
+	// Axis halt
+	fbAxis.Halt(bDriveHalt		:=		bHaltRequest);
+	
+	// Setting halt state from axis feedback
+	bHaltDone					:=		fbAxis.bState_HaltDone;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="InputOutput" Id="{0758f5c1-cb61-4956-8e9e-d68e9b5faf52}">
+      <Declaration><![CDATA[METHOD InputOutput
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[	// Axis buttons and output variables for axis
+	fbButtonAxisFw.SetOutput();
+	fbButtonAxisBw.SetOutput();
+
+	bAxisError							:=					fbAxis.bError;
+	nAxisErrorID						:=					fbAxis.nErrorID;
+	bAxisMoves							:=					fbAxis.bMoving;
+	
+	fbButtonAxisFw.bInputSignal			:=					bButtonAxisFwIn;
+	fbButtonAxisBw.bInputSignal			:=					bButtonAxisBwIn;
+	bButtonAxisFwOut					:=					fbButtonAxisFw.bOutputSignal;
+	bButtonAxisBwOut					:=					fbButtonAxisBw.bOutputSignal;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Manual" Id="{b7a0fd5c-6ae6-4561-8540-2c9adc0def20}">
+      <Declaration><![CDATA[METHOD Manual
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+	IF fbButtonAxisFw.bOutputSignal THEN
+		IF bHaltDone THEN
+			bHaltDone	:=		FALSE;
+		END_IF
+		
+		IF NOT bAxisMoved THEN
+			bAxisMoved 	:=		TRUE;
+		END_IF
+		
+		fbAxis.MoveFw();
+		
+	ELSIF fbButtonAxisBw.bOutputSignal THEN
+		IF bHaltDone THEN
+			bHaltDone	:=		FALSE;
+		END_IF
+		
+		IF NOT bAxisMoved THEN
+			bAxisMoved 	:=		TRUE;
+		END_IF
+	
+		fbAxis.MoveBw();
+	
+	// No button is pressed and Halt is not done
+	ELSIF NOT bHaltDone	THEN
+		IF bAxisMoved THEN
+			Halt(bHalt	:=	TRUE);
+		END_IF
+	
+	// Halt done, but still requested
+	ELSIF bHaltRequest THEN
+		Halt(bHalt		:=	FALSE);
+		
+		bAxisMoved	:=	FALSE;
+	END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Reset" Id="{7effd9ff-9a07-44e7-83cd-81a22fb25637}">
+      <Declaration><![CDATA[METHOD Reset
+VAR_INPUT
+	bReset				:			BOOL;			// True if machine is in state RESETTING
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+	// Store reset request
+	bResetRequest					:=			bReset;
+	
+	bAxisMoved						:=			FALSE;
+	bHaltRequest					:=			FALSE;
+	bHaltDone						:=			FALSE;
+	
+	// Trigger for resetting extending FBs 
+	fbTriggerResetStart(CLK			:=			bReset);
+	
+	// Resetting axis
+	fbAxis.Reset(bDriveReset		:=			bReset);
+	
+	bResetDone						:=			fbAxis.bState_ResetDone;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Starting" Id="{aac6103a-48c4-4be4-8548-a39ea85bfac5}">
+      <Declaration><![CDATA[METHOD Starting
+VAR_INPUT
+	bStarting					:				BOOL;			// True if machine is in state STARTING
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+	fbTriggerStartingStart(CLK			:=			bStarting);
+	
+	IF fbTriggerStartingStart.Q THEN
+		bStartingDone					:=			FALSE;
+	// Set axis velocity through axis property
+		fbAxis.fTargetVelocity			:=			fAxisVelo;
+
+	END_IF
+	
+	// Axis feedback from MC_Power of axis method Enable()
+	IF fbAxis.bState_Enable THEN
+		bStartingDone					:=			TRUE;
+	END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Stop" Id="{e6e002ff-7a94-4323-b9e0-f2e747d54e43}">
+      <Declaration><![CDATA[METHOD Stop : BOOL
+VAR_INPUT
+	bStop					:				BOOL;				// True if machine is in state ABORTING or STOPPING
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[	// Store halt request
+	bHaltRequest					:=				bStop;
+	
+	// Axis halt
+	fbAxis.Stop(bDriveStop			:=				bHaltRequest);
+	
+	// Setting halt state from axis feedback
+	bHaltDone						:=				fbAxis.bState_HaltDone;]]></ST>
+      </Implementation>
+    </Method>
+    <LineIds Name="FB_SubsystemRoot">
+      <LineId Id="9" Count="0" />
+      <LineId Id="44" Count="1" />
+    </LineIds>
+    <LineIds Name="FB_SubsystemRoot.bState_HaltDone.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SubsystemRoot.bState_ResetDone.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SubsystemRoot.bState_StartingDone.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SubsystemRoot.Enable">
+      <LineId Id="5" Count="0" />
+      <LineId Id="10" Count="0" />
+      <LineId Id="12" Count="5" />
+      <LineId Id="19" Count="0" />
+      <LineId Id="21" Count="3" />
+      <LineId Id="20" Count="0" />
+      <LineId Id="25" Count="1" />
+    </LineIds>
+    <LineIds Name="FB_SubsystemRoot.fAxisVelocity.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SubsystemRoot.fAxisVelocity.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SubsystemRoot.Halt">
+      <LineId Id="5" Count="0" />
+      <LineId Id="7" Count="6" />
+    </LineIds>
+    <LineIds Name="FB_SubsystemRoot.InputOutput">
+      <LineId Id="5" Count="1" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="8" Count="0" />
+      <LineId Id="10" Count="1" />
+      <LineId Id="13" Count="0" />
+      <LineId Id="15" Count="0" />
+      <LineId Id="17" Count="1" />
+      <LineId Id="16" Count="0" />
+      <LineId Id="7" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SubsystemRoot.Manual">
+      <LineId Id="6" Count="0" />
+      <LineId Id="5" Count="0" />
+      <LineId Id="7" Count="0" />
+      <LineId Id="9" Count="7" />
+      <LineId Id="27" Count="0" />
+      <LineId Id="17" Count="0" />
+      <LineId Id="19" Count="2" />
+      <LineId Id="18" Count="0" />
+      <LineId Id="22" Count="4" />
+      <LineId Id="28" Count="0" />
+      <LineId Id="38" Count="0" />
+      <LineId Id="29" Count="4" />
+      <LineId Id="39" Count="0" />
+      <LineId Id="34" Count="3" />
+      <LineId Id="8" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SubsystemRoot.Reset">
+      <LineId Id="7" Count="1" />
+      <LineId Id="5" Count="0" />
+      <LineId Id="9" Count="1" />
+      <LineId Id="12" Count="3" />
+      <LineId Id="19" Count="1" />
+      <LineId Id="25" Count="0" />
+      <LineId Id="16" Count="2" />
+    </LineIds>
+    <LineIds Name="FB_SubsystemRoot.Starting">
+      <LineId Id="9" Count="0" />
+      <LineId Id="5" Count="0" />
+      <LineId Id="8" Count="0" />
+      <LineId Id="10" Count="1" />
+      <LineId Id="13" Count="2" />
+      <LineId Id="12" Count="0" />
+      <LineId Id="16" Count="0" />
+      <LineId Id="19" Count="0" />
+      <LineId Id="7" Count="0" />
+      <LineId Id="17" Count="1" />
+    </LineIds>
+    <LineIds Name="FB_SubsystemRoot.Stop">
+      <LineId Id="7" Count="6" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

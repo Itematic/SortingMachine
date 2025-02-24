@@ -1,0 +1,1007 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_SeparatingModule" Id="{fe5702bc-623a-4e07-abc6-ab61f822959b}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_SeparatingModule EXTENDS FB_SubsystemRoot
+VAR_INPUT
+	
+	// ========================== State and mode of machine ==========================================================
+	bExecute							:				BOOL;							// True in state EXECUTE
+	bSemiStart							:				BOOL;							// Trigger for single process execution in semi-automatic mode
+
+	nBoxOnConveyor						:				BOOL;							// Actual number of boxes being processed
+	
+	// ========================== Button control for cylinders ======================================================================
+	bButtonClampToWorkIn				:				BOOL;							// Signal from button to move clamp cylinder to work position
+	bButtonClampToBaseIn				:				BOOL;							// Signal from button to move clamp cylinder to base position
+	bButtonBarrierToWorkIn				:				BOOL;							// Signal from button to move barrier cylinder to work position
+	bButtonBarrierToBaseIn				:				BOOL;							// Signal from button to move barrier cylinder to base position
+	
+END_VAR
+VAR_OUTPUT
+	bSeparated							:				BOOL;							// True if one separating process is done
+	
+	// ============================ Error variables =================================================================================
+	bClampError							:				BOOL;							// Error signal of clamp cylinder
+	sClampErrorMsg						:				STRING;							// Error message of clamp cylinder
+	bBarrierError						:				BOOL;							// Error signal of barrier cylinder
+	sBarrierErrorMsg					:				STRING;							// Error message of clamp cylinder
+	
+	// ============================= Temperature records =============================================================================
+	aClampTemp							:				ARRAY[1..100] OF LREAL;			// Clamp cylinder temperature records
+	aBarrierTemp						:				ARRAY[1..100] OF LREAL;			// Barrier cylinder temperature records
+	
+	// ========================== Button processed signal  ======================================================================
+	bButtonClampToWorkOut				:				BOOL;							// Processed signal for button to move clamp cylinder to work position
+	bButtonClampToBaseOut				:				BOOL;							// Processed signal for button to move clamp cylinder to base position
+	bButtonBarrierToWorkOut				:				BOOL;							// Processed signal for button to move barrier cylinder to work position
+	bButtonBarrierToBaseOut				:				BOOL;							// Processed signal for button to move barrier cylinder to base position
+END_VAR
+VAR
+	// ========================== Function block instance of sensor ======================================================================
+	fbSensor							:				FB_SignalHandlingIntern;		// Sensor for separting boxes process
+	
+	// ========================== Function block instance of clamp cylinder  ======================================================================
+	fbClamp								:				FB_CylinderBase;					// Clamp cylinder without diagnosis and temperature records
+	fbClampDiag							:				FB_CylinderDiag;					// Clamp cylinder with diagnosis
+	fbClampTemp							:				FB_CylinderTemp;					// Clamp cylinder with temperature indication
+	fbClampTempRecord					:				FB_CylinderTempRecord;				// Clamp cylinder with temperature record
+	fbClampTempDiag						:				FB_CylinderTempDiag;				// Clamp cylinder with temperature diagnosis
+	
+	// ========================== Interface instance for clamp cylinder  ======================================================================
+	itfClamp							:				I_Cylinder;							// Interface for flexible access to clamp cylinder FBs
+	
+	// ========================== Function block instance of barrier cylinder  ======================================================================
+	fbBarrier							:				FB_CylinderBase;					// Barrier cylinder without diagnosis and temperature records
+	fbBarrierDiag						:				FB_CylinderDiag;					// Barrier cylinder with diagnosis
+	fbBarrierTemp						:				FB_CylinderTemp;					// Barrier cylinder with temperature indication
+	fbBarrierTempRecord					:				FB_CylinderTempRecord;				// Barrier cylinder with temperature record
+	fbBarrierTempDiag					:				FB_CylinderTempDiag;				// Barrier cylinder with temperature diagnosis
+	
+	// ========================== Interface instance for barrier cylinder  =============================================================================
+	itfBarrier							:				I_Cylinder;							// Interface for flexible access to barrier cylinder FBs
+	
+	// ========================== Time parameters for clamp and barrier cylinder  ======================================================================
+	tTimeOutClamp						:				TIME;								// For clamp cylinder with diagnosis: time in which the cylinder should reach base/work position
+	tTimeOutBarrier						:				TIME;								// For barrier cylinder with diagnosis: time in which the cylinder should reach base/work position
+	tTimeIntervalClamp					:				TIME;								// Time of intervals to record the temperature of clamp cylinder 
+	tTimeIntervalBarrier				:				TIME;								// Time of intervals to record the temperature of barrier cylinder
+	tTimeBarrierAtWork					:				TIME;								// Time period for separating process for which barrier cylinder stays at work position
+	
+	// ========================== Temperature parameters for clamp and barrier cylinder  ======================================================================
+	nTempMinClamp						:				LREAL;								// For clamp cylinder with temperature diagnosis: minimal temperature
+	nTempMinBarrier						:				LREAL;								// For barrier cylinder with temperature diagnosis: minimal temperature
+	nTempMaxClamp						:				LREAL;								// For clamp cylinder with temperature diagnosis: maximal temperature
+	nTempMaxBarrier						:				LREAL;								// For barrier cylinder with temperature diagnosis: maximal temperature
+	
+	// ============================ Signal handling for manual cylinders control  ======================================================================
+	fbButtonClampToWork					:				FB_SignalHandlingIntern;			// Manual control of clamp cylinder to work position
+	fbButtonClampToBase					:				FB_SignalHandlingIntern;			// Manual control of clamp cylinder to base position
+	fbButtonBarrierToWork				:				FB_SignalHandlingIntern;			// Manual control of barrier cylinder to work position
+	fbButtonBarrierToBase				:				FB_SignalHandlingIntern;			// Manual control of barrier cylinder to base position
+
+	// ============================ Common variables ======================================================================
+	fbTimerBarrierAtWork				:				TON;								// Timer for operning barrier in auto and semi-auto mode
+	eStateAuto							:				E_StateSeparatingAutoClampBarrier;			// State variable for auto mode
+	eStateSemiAuto						:				E_StateSeparatingAutoClampBarrier;			// State variable for semi-auto
+	
+END_VAR]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[// =========================================================
+;
+// =========================================================]]></ST>
+    </Implementation>
+    <Method Name="Automatic" Id="{0a4b30cb-0289-449f-940e-edf9b955127d}">
+      <Declaration><![CDATA[METHOD Automatic
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[	// Set timer delay for work position of barrier
+	fbTimerBarrierAtWork(PT		:=		tTimeBarrierAtWork);
+	
+	IF NOT bHaltRequest	THEN
+		fbAxis.MoveFw();
+	
+	ELSIF NOT bHaltDone THEN
+		Stop(bStop	:= TRUE);
+		
+	ELSE
+		Stop(bStop	:= FALSE);
+	END_IF
+	
+// =========================================================
+// State machine for process of separating boxes	
+	
+	CASE eStateAuto OF
+		
+		// =============================================================
+		E_StateSeparatingAutoClampBarrier.Init:
+		
+						// Close clamp cylinder. Calling FB method through interface instance
+						itfClamp.MoveToBase();
+						
+						// Checking if clamp is in initial position + execute active
+						IF itfClamp.bState_AtBasePos AND bExecute THEN
+							eStateAuto	:=	E_StateSeparatingAutoClampBarrier.Start;
+						END_IF
+		
+		// =============================================================
+		E_StateSeparatingAutoClampBarrier.Start:
+		
+						IF fbSensor.bOutputSignal AND fbAxis.bMoving THEN
+							eStateAuto	:=	E_StateSeparatingAutoClampBarrier.CloseClamp;
+						// Check if clamp cylinder is not opened
+						ELSIF NOT	itfClamp.bState_AtWorkPos THEN
+							itfClamp.MoveToWork();
+						END_IF
+
+		// =============================================================
+		E_StateSeparatingAutoClampBarrier.CloseClamp:
+		
+						// Close clamp cylinder
+						itfClamp.MoveToBase();
+						
+						// Check clamp cylinder closed and confirm separation bit
+						IF itfClamp.bState_AtBasePos THEN
+							bSeparated	:=	TRUE;
+							eStateAuto	:=	E_StateSeparatingAutoClampBarrier.OpenBarrier;
+						END_IF
+
+		// =============================================================
+		E_StateSeparatingAutoClampBarrier.OpenBarrier:
+						
+						// Open barrier cylinder
+						itfBarrier.MoveToWork();
+
+						// Check barrier cylinder closed
+						IF itfBarrier.bState_AtWorkPos THEN
+							fbTimerBarrierAtWork(IN	:= TRUE);
+						END_IF
+
+						IF fbTimerBarrierAtWork.Q THEN
+							fbTimerBarrierAtWork(IN	:= FALSE);
+							eStateAuto	:=	E_StateSeparatingAutoClampBarrier.CloseBarrier;
+						END_IF
+								
+		// =============================================================
+		E_StateSeparatingAutoClampBarrier.CloseBarrier:
+		
+						itfBarrier.MoveToBase();
+						
+						IF itfBarrier.bState_AtBasePos THEN
+							bSeparated	:=	FALSE;
+							eStateAuto	:=	E_StateSeparatingAutoClampBarrier.OpenClamp;	
+						END_IF
+		
+		// =============================================================
+		E_StateSeparatingAutoClampBarrier.OpenClamp:
+		
+						itfClamp.MoveToWork();
+						
+						IF itfClamp.bState_AtWorkPos THEN
+							eStateAuto	:=	E_StateSeparatingAutoClampBarrier.Init;
+						END_IF
+												
+		END_CASE]]></ST>
+      </Implementation>
+    </Method>
+    <Property Name="bState_BarrierAtBasePos" Id="{361841cd-fe78-4c63-a5f8-2a5e60df068e}">
+      <Declaration><![CDATA[PROPERTY bState_BarrierAtBasePos : BOOL]]></Declaration>
+      <Get Name="Get" Id="{b53209dc-0388-4e5a-bdf1-2a0502d5d641}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{d204faf5-a05f-4ba4-8442-c2a428835ae7}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Property Name="bState_BarrierAtWorkPos" Id="{0cb04bea-1860-4cee-ac7b-4c93ca99baa0}">
+      <Declaration><![CDATA[PROPERTY bState_BarrierAtWorkPos : BOOL]]></Declaration>
+      <Get Name="Get" Id="{ceda46b2-f0c0-4ab4-893f-83265943f3d4}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{e4b5446a-1991-4078-b956-89eaf1b782f9}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Property Name="bState_ClampAtBasePos" Id="{66d14b69-9999-4d01-88d6-916f0cff5fc6}">
+      <Declaration><![CDATA[PROPERTY bState_ClampAtBasePos : BOOL]]></Declaration>
+      <Get Name="Get" Id="{e4269678-56d7-43a2-b79e-c325c2a8575f}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{8573b6a8-ff14-471f-b3cf-e0c6ed170d10}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Property Name="bState_ClampAtWorkPos" Id="{0e0ad12d-731a-4a41-b966-7e5f5cf6878f}">
+      <Declaration><![CDATA[PROPERTY bState_ClampAtWorkPos : BOOL]]></Declaration>
+      <Get Name="Get" Id="{a83a3848-4851-4318-b12a-24e40219f1b1}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{bd48b6f6-3778-41fe-8870-7f540b070673}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Method Name="CylinderOptions" Id="{bf8e9c6e-ea31-47e1-8b01-1b2b7abd3b3a}">
+      <Declaration><![CDATA[METHOD CylinderOptions
+VAR_INPUT
+	bClampDiag					:				BOOL;			// If TRUE clamp cylinder has diagnostic functionality
+	bClampTemp					:				BOOL;			// If TRUE clamp cylinder has temperature functionality
+	bClampRecord				:				BOOL;			// If TRUE clamp cylinder has recording functionality	
+	
+	bBarrierDiag				:				BOOL;			// If TRUE barrier cylinder has diagnostic functionality
+	bBarrierTemp				:				BOOL;			// If TRUE barrier cylinder has temperature functionality
+	bBarrierRecord				:				BOOL;			// If TRUE barrier cylinder has recording functionality
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[	
+	// Clamp cylinder interface
+	
+	IF bClampDiag THEN
+		// Clamp cylinder with temperature diagnosis
+		IF	bClampTemp THEN
+			fbClampTempDiag.fTempMin				:=			nTempMinClamp;
+			fbClampTempDiag.fTempMax				:=			nTempMaxClamp;
+			bClampError								:=			fbClampTempDiag.bError;
+			sClampErrorMsg							:=			fbClampTempDiag.sErrorMsg;
+				itfClamp								:=			fbClampTempDiag;
+		// Clamp cylinder with position diagnosis without temperature diagnosis
+		ELSE
+			bClampError								:=			fbClampDiag.bError;
+			sClampErrorMsg							:=			fbClampDiag.sErrorMsg;
+				itfClamp								:=			fbClampDiag;
+		END_IF
+	ELSE
+		bClampError									:=			FALSE;
+		sClampErrorMsg								:=			'';
+		
+		// Clamp cylinder with temperature record
+		IF bClampTemp THEN
+			IF bClampRecord THEN
+				fbClampTempRecord.nTimeInterval		:=			tTimeIntervalClamp;				// Time of record intervals
+				fbClampTempRecord.bRecordStart		:=			bCompresAirEnableLocal;			// Record if compressed air is set
+				
+				fbClampTempRecord.Record();														// Call record() method of FB_CylinderTempRecord
+				
+				aClampTemp							:=			fbClampTempRecord.aRecords;
+					itfClamp							:=			fbClampTempRecord;
+			ELSE
+					itfClamp							:=			fbClampTemp;
+			END_IF
+		ELSE
+					itfClamp							:=			fbClamp;
+		END_IF
+		
+	END_IF
+	
+	// Barrier cylinder interface
+	
+	IF bBarrierDiag THEN
+		IF	bBarrierTemp THEN
+			fbBarrierTempDiag.fTempMin				:=			nTempMinBarrier;
+			fbBarrierTempDiag.fTempMax				:=			ntempMaxBarrier;
+			bBarrierError							:=			fbBarrierTempDiag.bError;
+			sBarrierErrorMsg						:=			fbBarrierTempDiag.sErrorMsg;
+				itfBarrier								:=			fbBarrierTempDiag;
+		ELSE
+			
+			bBarrierError							:=			fbBarrierDiag.bError;
+			sBarrierErrorMsg						:=			fbBarrierDiag.sErrorMsg;
+				itfBarrier								:=			fbBarrierDiag;
+		END_IF
+	ELSE
+		bBarrierError								:=			FALSE;
+		sBarrierErrorMsg							:=			'';
+		
+		IF bBarrierTemp THEN
+			IF bBarrierRecord THEN
+				fbBarrierTempRecord.nTimeInterval	:=			tTimeIntervalBarrier;
+				fbBarrierTempRecord.bRecordStart	:=			bCompresAirEnableLocal;
+				
+				fbBarrierTempRecord.Record();
+				
+				aBarrierTemp						:=			fbBarrierTempRecord.aRecords;
+					itfBarrier							:=			fbBarrierTempRecord;
+			ELSE
+					itfBarrier							:=			fbBarrierTemp;
+			END_IF
+		ELSE
+					itfBarrier							:=			fbBarrier;
+		END_IF
+		
+	END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Enable" Id="{c806d93b-7bd7-4ec8-a443-62fbee50dd77}">
+      <Declaration><![CDATA[METHOD Enable
+VAR_INPUT
+	bComprAirEnable					:			BOOL;			// Enable of compressed air
+	bAxisEnable						:			BOOL;			// Enable of axis
+	bSensorEnable					:			BOOL;			// Enable of sensor
+	bManualAxisEnable				:			BOOL;			// Enable manual axis control
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[	
+	SUPER^.Enable(	bComprAirEnable		:=		bComprAirEnable,
+					bAxisEnable			:=		bAxisEnable,
+					bSensorEnable		:=		bSensorEnable,
+					bManualAxisEnable	:=		bManualAxisEnable);
+				
+	// Sensor control
+	
+	fbSensor.Enable( bEnable			:=		bSensorEnable);
+	
+	// Clamp and barrier cylinder buttons control
+	
+	fbButtonClampToBase.Enable(		bEnable	:=		bManualCylinderEnableLocal AND NOT itfClamp.bState_AtBasePos);				// bManualAxisEnable + bComprAirEnable
+	fbButtonClampToWork.Enable(		bEnable	:=		bManualCylinderEnableLocal AND NOT itfClamp.bState_AtWorkPos);
+	
+	fbButtonClampToBase.bInputSignal		:=		NOT fbButtonClampToWork.bInputSignal;
+	
+	fbButtonBarrierToBase.Enable(	bEnable	:=		bManualCylinderEnableLocal AND NOT itfBarrier.bState_AtBasePos);
+	fbButtonBarrierToWork.Enable(	bEnable	:=		bManualCylinderEnableLocal AND NOT itfBarrier.bState_AtWorkPos);
+	
+	fbButtonBarrierToBase.bInputSignal		:=		NOT fbButtonBarrierToWork.bInputSignal;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="InputOutput" Id="{9864cf68-5486-493d-9526-98deba096b61}">
+      <Declaration><![CDATA[METHOD InputOutput
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+	SUPER^.InputOutput();
+	
+	fbSensor.SetOutput();
+	
+	fbButtonClampToWork.SetOutput();
+	fbButtonClampToBase.SetOutput();
+	fbButtonBarrierToWork.SetOutput();
+	fbButtonBarrierToWork.SetOutput();
+	
+	fbButtonClampToWork.bInputSignal					:=						bButtonClampToWorkIn;
+	fbButtonClampToBase.bInputSignal					:=						bButtonClampToBaseIn;
+	fbButtonBarrierToWork.bInputSignal					:=						bButtonBarrierToWorkIn;
+	fbButtonBarrierToBase.bInputSignal					:=						bButtonBarrierToBaseIn;
+
+	bButtonClampToWorkOut								:=						fbButtonClampToWork.bOutputSignal;
+	bButtonClampToBaseOut								:=						fbButtonClampToBase.bOutputSignal;
+	bButtonBarrierToWorkOut								:=						fbButtonBarrierToWork.bOutputSignal;
+	bButtonBarrierToBaseOut								:=						fbButtonBarrierToBase.bOutputSignal;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Maintain" Id="{26ae3fa6-8ace-48d6-a786-8ea26a5baf57}">
+      <Declaration><![CDATA[METHOD Maintain
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+	THIS^.Manual();]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Manual" Id="{737e2979-8473-4a13-a9c4-83322b6e9367}">
+      <Declaration><![CDATA[METHOD Manual
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+	SUPER^.Manual();
+	
+	// Manual clamp & barrier cylinder control
+	
+	IF fbButtonClampToWork.bOutputSignal THEN
+		itfClamp.MoveToWork();
+	ELSIF	fbButtonClampToBase.bOutputSignal THEN
+		itfClamp.MoveToBase();	
+	END_IF
+	
+	IF fbButtonBarrierToWork.bOutputSignal THEN
+		itfBarrier.MoveToWork();
+	ELSIF	fbButtonBarrierToBase.bOutputSignal THEN
+		itfBarrier.MoveToBase();
+	END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Property Name="nProp_TempMaxBarrier" Id="{54de1610-2f0c-48af-b88e-a4dd1519571d}">
+      <Declaration><![CDATA[PROPERTY nProp_TempMaxBarrier : LREAL]]></Declaration>
+      <Get Name="Get" Id="{e19b0180-b538-4dce-b6fc-da16119497ae}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[nProp_TempMaxBarrier	:=	nTempMaxBarrier;]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{aed51e9a-3b90-426f-91e5-3457fdfbf629}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[nTempMaxBarrier	:= nProp_TempMaxBarrier;]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Property Name="nProp_TempMaxClamp" Id="{024c2538-2040-43b3-b86c-d448bae1135d}">
+      <Declaration><![CDATA[PROPERTY nProp_TempMaxClamp : LREAL]]></Declaration>
+      <Get Name="Get" Id="{4b7195c7-e0c3-4c10-b9e9-8559fe0ebbd8}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[nProp_TempMaxClamp	:=	nTempMaxClamp;]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{b502ebcc-0bbe-4659-9676-a1afbed26fa1}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[nTempMaxClamp	:=	nProp_TempMaxClamp;]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Property Name="nProp_TempMinBarrier" Id="{989eab79-288d-4ac4-82f7-8659be1adf63}">
+      <Declaration><![CDATA[PROPERTY nProp_TempMinBarrier : LREAL]]></Declaration>
+      <Get Name="Get" Id="{7890c5fc-dc56-41a4-aa12-71e0fadb2ba4}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[nProp_TempMinBarrier	:=	nTempMinBarrier;]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{11d2904d-a375-4398-94dd-d1da33b7c16d}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[nTempMinBarrier	:=	nProp_TempMinBarrier;]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Property Name="nProp_TempMinClamp" Id="{1194ada2-9352-46d1-a2c9-4ab9730ef4ba}">
+      <Declaration><![CDATA[PROPERTY nProp_TempMinClamp : LREAL]]></Declaration>
+      <Get Name="Get" Id="{2556d1e9-5f49-4bf0-98a8-c16b961fc3f7}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[nProp_TempMinClamp	:=	nTempMinClamp;]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{02e9e0cb-5ba0-4f9d-84f0-c09eb5df5c13}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[nTempMinClamp	:=	nProp_TempMinClamp;]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Method Name="Reset" Id="{d54008c0-4baf-4d8b-b72e-5c74aea56e76}">
+      <Declaration><![CDATA[METHOD Reset
+VAR_INPUT
+	bReset				:			BOOL;			// True if machine is in state RESETTING
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+	SUPER^.Reset(bReset		:=		bReset);
+	
+	IF fbTriggerResetStart.Q THEN
+		
+		bExecute				:=				FALSE;
+		
+		bSeparated				:=				FALSE;
+		
+		fbTimerBarrierAtWork( IN:= FALSE);
+
+		itfClamp.Reset();
+		itfBarrier.Reset();
+	END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="ResetState" Id="{14240a24-fe4b-45ea-b4d6-ed0db090db26}">
+      <Declaration><![CDATA[METHOD ResetState
+VAR_INPUT
+END_VAR]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// =========================================================
+	eStateAuto					:=			E_StateSeparatingAutoClampBarrier.Init;
+	eStateSemiAuto				:=			E_StateSeparatingAutoClampBarrier.Init;
+// =========================================================]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Semiautomatic" Id="{021953da-ae00-4bff-bb93-7aefc90fd673}">
+      <Declaration><![CDATA[METHOD Semiautomatic
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[	// Set timer delay for work position of barrier
+	fbTimerBarrierAtWork(PT		:=		tTimeBarrierAtWork);
+	
+	IF (nBoxOnConveyor = 0) AND (eStateSemiAuto = E_StateSeparatingAutoClampBarrier.Init) THEN
+		Stop(bStop	:=	TRUE);
+	END_IF
+	
+	IF NOT bHaltRequest	THEN
+		fbAxis.MoveFw();
+	
+	ELSIF NOT bHaltDone THEN
+		Stop(bStop	:= TRUE);
+		
+	ELSE
+		Stop(bStop	:= FALSE);
+	END_IF
+	// =========================================================
+// State machine for process of separating boxes	
+	
+	CASE eStateSemiAuto OF
+		
+		// =============================================================
+		E_StateSeparatingAutoClampBarrier.Init:
+		
+						// Close clamp cylinder. Calling FB method through interface instance
+						itfClamp.MoveToBase();
+						
+						// Checking if clamp is in initial position + execute active
+						IF itfClamp.bState_AtBasePos AND bExecute AND bSemiStart THEN
+							eStateSemiAuto	:=	E_StateSeparatingAutoClampBarrier.Start;
+						END_IF
+		
+		// =============================================================
+		E_StateSeparatingAutoClampBarrier.Start:
+		
+						IF fbSensor.bOutputSignal THEN
+							eStateSemiAuto	:=	E_StateSeparatingAutoClampBarrier.CloseClamp;
+						// Check if clamp cylinder is not opened
+						ELSIF NOT	itfClamp.bState_AtWorkPos THEN
+							itfClamp.MoveToWork();
+							fbAxis.MoveFw();
+						END_IF
+
+		// =============================================================
+		E_StateSeparatingAutoClampBarrier.CloseClamp:
+		
+						// Close clamp cylinder
+						itfClamp.MoveToBase();
+						
+						// Check clamp cylinder closed and confirm separation bit
+						IF itfClamp.bState_AtBasePos THEN
+							bSeparated	:=	TRUE;
+							eStateSemiAuto	:=	E_StateSeparatingAutoClampBarrier.OpenBarrier;
+						END_IF
+
+		// =============================================================
+		E_StateSeparatingAutoClampBarrier.OpenBarrier:
+						
+						// Open barrier cylinder
+						itfBarrier.MoveToWork();
+
+						// Check barrier cylinder closed
+						IF itfBarrier.bState_AtWorkPos THEN
+							fbTimerBarrierAtWork(IN	:= TRUE);
+						END_IF
+
+						IF fbTimerBarrierAtWork.Q THEN
+							fbTimerBarrierAtWork(IN	:= FALSE);
+							eStateSemiAuto	:=	E_StateSeparatingAutoClampBarrier.CloseBarrier;
+						END_IF
+								
+		// =============================================================
+		E_StateSeparatingAutoClampBarrier.CloseBarrier:
+		
+						itfBarrier.MoveToBase();
+						
+						IF itfBarrier.bState_AtBasePos THEN
+							bSeparated	:=	FALSE;
+							eStateSemiAuto	:=	E_StateSeparatingAutoClampBarrier.OpenClamp;	
+						END_IF
+		
+		// =============================================================
+		E_StateSeparatingAutoClampBarrier.OpenClamp:
+		
+						itfClamp.MoveToWork();
+						
+						IF itfClamp.bState_AtWorkPos THEN
+							eStateSemiAuto	:=	E_StateSeparatingAutoClampBarrier.Init;
+						END_IF
+												
+		END_CASE]]></ST>
+      </Implementation>
+    </Method>
+    <Property Name="tBarrierAtWorkPos" Id="{904fb7d8-37b1-4ebd-abe2-debe84001dcd}">
+      <Declaration><![CDATA[PROPERTY tBarrierAtWorkPos : TIME]]></Declaration>
+      <Get Name="Get" Id="{315f6cdc-57e4-48bc-a42f-f48b650b272d}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{dfac9c40-a2f1-47b4-aa6d-c9fc34311307}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Property Name="tProp_TimeIntervalBarrier" Id="{3c9ff324-f9a6-4fea-bcfd-248c83825f74}">
+      <Declaration><![CDATA[PROPERTY tProp_TimeIntervalBarrier : TIME]]></Declaration>
+      <Get Name="Get" Id="{074b67ca-b34c-40e8-9549-ef4c8a18b5fb}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[tProp_TimeIntervalBarrier	:=	tTimeIntervalBarrier;]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{b62d8c4c-65a9-4eaf-bd0f-c3c08de7cced}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[tTimeIntervalBarrier	:=	tProp_TimeIntervalBarrier;]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Property Name="tProp_TimeIntervalClamp" Id="{7b01464d-835b-45ae-80b7-966c9f0d1877}">
+      <Declaration><![CDATA[PROPERTY tProp_TimeIntervalClamp : TIME]]></Declaration>
+      <Get Name="Get" Id="{99d6c0b2-0ee9-4300-9593-e0f04318d07c}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[tProp_TimeIntervalClamp		:=	tTimeIntervalClamp;]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{0b7a44d4-19ae-467f-91ed-0592a4916dda}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[tTimeIntervalClamp	:=	tProp_TimeIntervalClamp;]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Property Name="tProp_TimeOutBarrier" Id="{0dc1c394-ed4f-47f8-84cf-db66714ce6db}">
+      <Declaration><![CDATA[PROPERTY tProp_TimeOutBarrier : TIME]]></Declaration>
+      <Get Name="Get" Id="{5904e0a1-538b-4501-a01d-007361cb5439}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{90fef976-a25b-4e2e-9523-6cd9ce0bc9bb}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Property Name="tProp_TimeOutClamp" Id="{774a36c4-2ce9-4ac8-bf4e-a45ebe104ee4}">
+      <Declaration><![CDATA[PROPERTY tProp_TimeOutClamp : TIME]]></Declaration>
+      <Get Name="Get" Id="{033a10cd-4c90-4e1f-a7b8-b2e3fa347710}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{cb297d24-3221-4c82-80f1-854b28c3d96f}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <LineIds Name="FB_SeparatingModule">
+      <LineId Id="98" Count="1" />
+      <LineId Id="9" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.Automatic">
+      <LineId Id="5" Count="4" />
+      <LineId Id="11" Count="5" />
+      <LineId Id="10" Count="0" />
+      <LineId Id="25" Count="0" />
+      <LineId Id="24" Count="0" />
+      <LineId Id="17" Count="1" />
+      <LineId Id="26" Count="0" />
+      <LineId Id="19" Count="0" />
+      <LineId Id="21" Count="1" />
+      <LineId Id="28" Count="7" />
+      <LineId Id="27" Count="0" />
+      <LineId Id="23" Count="0" />
+      <LineId Id="36" Count="0" />
+      <LineId Id="38" Count="2" />
+      <LineId Id="42" Count="2" />
+      <LineId Id="41" Count="0" />
+      <LineId Id="45" Count="4" />
+      <LineId Id="51" Count="4" />
+      <LineId Id="57" Count="0" />
+      <LineId Id="56" Count="0" />
+      <LineId Id="59" Count="1" />
+      <LineId Id="58" Count="0" />
+      <LineId Id="64" Count="0" />
+      <LineId Id="69" Count="0" />
+      <LineId Id="65" Count="0" />
+      <LineId Id="70" Count="0" />
+      <LineId Id="68" Count="0" />
+      <LineId Id="71" Count="1" />
+      <LineId Id="81" Count="0" />
+      <LineId Id="83" Count="0" />
+      <LineId Id="82" Count="0" />
+      <LineId Id="80" Count="0" />
+      <LineId Id="79" Count="0" />
+      <LineId Id="73" Count="0" />
+      <LineId Id="67" Count="0" />
+      <LineId Id="75" Count="1" />
+      <LineId Id="74" Count="0" />
+      <LineId Id="85" Count="0" />
+      <LineId Id="88" Count="1" />
+      <LineId Id="91" Count="0" />
+      <LineId Id="90" Count="0" />
+      <LineId Id="87" Count="0" />
+      <LineId Id="84" Count="0" />
+      <LineId Id="77" Count="1" />
+      <LineId Id="92" Count="5" />
+      <LineId Id="50" Count="0" />
+      <LineId Id="37" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.bState_BarrierAtBasePos.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.bState_BarrierAtBasePos.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.bState_BarrierAtWorkPos.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.bState_BarrierAtWorkPos.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.bState_ClampAtBasePos.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.bState_ClampAtBasePos.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.bState_ClampAtWorkPos.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.bState_ClampAtWorkPos.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.CylinderOptions">
+      <LineId Id="5" Count="0" />
+      <LineId Id="13" Count="2" />
+      <LineId Id="28" Count="0" />
+      <LineId Id="16" Count="0" />
+      <LineId Id="23" Count="0" />
+      <LineId Id="22" Count="0" />
+      <LineId Id="24" Count="1" />
+      <LineId Id="18" Count="1" />
+      <LineId Id="29" Count="0" />
+      <LineId Id="27" Count="0" />
+      <LineId Id="30" Count="1" />
+      <LineId Id="26" Count="0" />
+      <LineId Id="32" Count="1" />
+      <LineId Id="20" Count="0" />
+      <LineId Id="34" Count="0" />
+      <LineId Id="40" Count="0" />
+      <LineId Id="35" Count="1" />
+      <LineId Id="38" Count="0" />
+      <LineId Id="41" Count="7" />
+      <LineId Id="39" Count="0" />
+      <LineId Id="37" Count="0" />
+      <LineId Id="50" Count="0" />
+      <LineId Id="49" Count="0" />
+      <LineId Id="21" Count="0" />
+      <LineId Id="17" Count="0" />
+      <LineId Id="51" Count="1" />
+      <LineId Id="63" Count="2" />
+      <LineId Id="67" Count="0" />
+      <LineId Id="69" Count="3" />
+      <LineId Id="68" Count="0" />
+      <LineId Id="77" Count="1" />
+      <LineId Id="80" Count="0" />
+      <LineId Id="79" Count="0" />
+      <LineId Id="74" Count="0" />
+      <LineId Id="81" Count="0" />
+      <LineId Id="92" Count="1" />
+      <LineId Id="82" Count="0" />
+      <LineId Id="94" Count="0" />
+      <LineId Id="83" Count="0" />
+      <LineId Id="95" Count="5" />
+      <LineId Id="85" Count="0" />
+      <LineId Id="89" Count="1" />
+      <LineId Id="86" Count="1" />
+      <LineId Id="91" Count="0" />
+      <LineId Id="88" Count="0" />
+      <LineId Id="73" Count="0" />
+      <LineId Id="66" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.Enable">
+      <LineId Id="9" Count="0" />
+      <LineId Id="15" Count="0" />
+      <LineId Id="10" Count="4" />
+      <LineId Id="16" Count="3" />
+      <LineId Id="22" Count="1" />
+      <LineId Id="20" Count="0" />
+      <LineId Id="26" Count="1" />
+      <LineId Id="24" Count="1" />
+      <LineId Id="21" Count="0" />
+      <LineId Id="28" Count="1" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.InputOutput">
+      <LineId Id="6" Count="0" />
+      <LineId Id="5" Count="0" />
+      <LineId Id="30" Count="1" />
+      <LineId Id="22" Count="3" />
+      <LineId Id="12" Count="1" />
+      <LineId Id="26" Count="0" />
+      <LineId Id="14" Count="1" />
+      <LineId Id="17" Count="0" />
+      <LineId Id="20" Count="0" />
+      <LineId Id="19" Count="0" />
+      <LineId Id="29" Count="0" />
+      <LineId Id="28" Count="0" />
+      <LineId Id="27" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.Maintain">
+      <LineId Id="9" Count="0" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.Manual">
+      <LineId Id="6" Count="0" />
+      <LineId Id="5" Count="0" />
+      <LineId Id="7" Count="0" />
+      <LineId Id="20" Count="0" />
+      <LineId Id="19" Count="0" />
+      <LineId Id="8" Count="2" />
+      <LineId Id="13" Count="0" />
+      <LineId Id="12" Count="0" />
+      <LineId Id="11" Count="0" />
+      <LineId Id="14" Count="1" />
+      <LineId Id="17" Count="1" />
+      <LineId Id="16" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.nProp_TempMaxBarrier.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.nProp_TempMaxBarrier.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.nProp_TempMaxClamp.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.nProp_TempMaxClamp.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.nProp_TempMinBarrier.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.nProp_TempMinBarrier.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.nProp_TempMinClamp.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.nProp_TempMinClamp.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.Reset">
+      <LineId Id="7" Count="0" />
+      <LineId Id="6" Count="0" />
+      <LineId Id="8" Count="1" />
+      <LineId Id="14" Count="0" />
+      <LineId Id="25" Count="0" />
+      <LineId Id="24" Count="0" />
+      <LineId Id="26" Count="0" />
+      <LineId Id="22" Count="1" />
+      <LineId Id="20" Count="0" />
+      <LineId Id="17" Count="0" />
+      <LineId Id="16" Count="0" />
+      <LineId Id="15" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.ResetState">
+      <LineId Id="6" Count="2" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.Semiautomatic">
+      <LineId Id="9" Count="2" />
+      <LineId Id="22" Count="2" />
+      <LineId Id="21" Count="0" />
+      <LineId Id="12" Count="8" />
+      <LineId Id="25" Count="23" />
+      <LineId Id="98" Count="0" />
+      <LineId Id="49" Count="48" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.tBarrierAtWorkPos.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.tBarrierAtWorkPos.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.tProp_TimeIntervalBarrier.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.tProp_TimeIntervalBarrier.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.tProp_TimeIntervalClamp.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.tProp_TimeIntervalClamp.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.tProp_TimeOutBarrier.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.tProp_TimeOutBarrier.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.tProp_TimeOutClamp.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SeparatingModule.tProp_TimeOutClamp.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

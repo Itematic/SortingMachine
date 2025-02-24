@@ -1,0 +1,618 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="FB_SortingModule" Id="{78f5a34d-589b-4d90-87e2-81c612568f87}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK FB_SortingModule EXTENDS FB_SubsystemRoot
+VAR_INPUT
+	bButtonCylMoveToWorkIn										:						BOOL;
+	bButtonCylMoveToBaseIn										:						BOOL;
+END_VAR
+VAR_OUTPUT
+	bCylError													:						BOOL;
+	sCylErrorMsg												:						STRING;
+	
+	a_Temps														:						ARRAY [1..100] OF LREAL;
+	
+	bButtonCylMoveToWorkOut										:						BOOL;
+	bButtonCylMoveToBaseOut										:						BOOL;
+END_VAR
+VAR
+	bSorted														:						BOOL;								// Part picked at sorting module
+	// Sensor with delay functionality
+	fbSensorDelay												:						FB_SignalHandlingDelay;
+	
+	// Function block instance for cylinder
+	fbCylinder													:						FB_CylinderBase;
+	fbCylinderDiag												:						FB_CylinderDiag;
+	fbCylinderTemp												:						FB_CylinderTemp;
+	fbCylinderTempDiag											:						FB_CylinderTempDiag;
+	fbCylinderTempRec											:						FB_CylinderTempRecord;
+	// Interface instance for cylinder
+	itfCylinder													:						I_Cylinder;
+	// Time parameters for submodules
+	tTimeOutCylinder											:						TIME;								// For cylinder with position diagnosis: time in which the cylinder shcould reach work / base position
+	tTimeIntervalCylinder										:						TIME;								// Time of intervals to record the temperature of cylinder
+	tSensorDelay												:						TIME;								// Sensor delay
+	tMoveAxisDelay												:						TIME;								// Time delay to stop running axis
+	// ========================== Temperature parameters for cylinder  ======================================================================
+	nTempMinCyl													:						LREAL;								// For cylinder with temperature diagnosis: minimal temperature
+	nTempMaxCyl													:						LREAL;								// For cylinder with temperature diagnosis: maximal temperature
+	// Manual cylinder controll
+	fbButtonCylMoveToWork										:						FB_SignalHandlingIntern;			// Button to move cylinder manually to work position
+	fbButtonCylMoveToBase										:						FB_SignalHandlingIntern;			// Button to move cylinder manually to base position
+	// Common variables
+	fbTimerAxis													:						TON;								// Timer to run axis for certain amount of time
+	fbTriggerCylAtWorkPos										:						R_TRIG;								// Trigger to recognize rising edge of cylinder being at work position
+	eStateAutoAxis												:						E_StateSortingAutoAxis;				// State variable for automatic / semi-auto mode for axis movement
+	eStateAutoCylinder											:						E_StateSortingAutoCylinder;			// State variable for automatic / semi-auto mode for cylinder movement
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[]]></ST>
+    </Implementation>
+    <Method Name="Automatic" Id="{047bbba3-2625-45bf-ac3b-0a710f32d1ef}">
+      <Declaration><![CDATA[METHOD Automatic
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[	fbTriggerCylAtWorkPos(		CLK			:=		itfCylinder.bState_AtWorkPos);
+
+	CASE eStateAutoAxis OF
+		
+		E_StateSortingAutoAxis.WaitForCylinderAtWorkPos:
+			IF fbTriggerCylAtWorkPos.Q THEN
+				fbTimerAxis(	IN			:=		TRUE,
+								PT			:=		tMoveAxisDelay);
+				
+				eStateAutoAxis				:=		E_StateSortingAutoAxis.MoveAxis;
+			END_IF
+		
+		E_StateSortingAutoAxis.MoveAxis:
+			fbTimerAxis();
+			IF bHaltRequest THEN
+				
+				eStateAutoAxis				:=		E_StateSortingAutoAxis.StopAxis;
+			ELSIF fbTimerAxis.Q THEN
+				fbTimerAxis(	IN			:=		FALSE);
+				
+				bSorted						:=		TRUE;
+			
+				eStateAutoAxis				:=		E_StateSortingAutoAxis.StopAxis;
+			ELSE
+				fbAxis.MoveFw();
+			END_IF
+		
+		E_StateSortingAutoAxis.StopAxis:
+				bSorted						:=		FALSE;
+				
+				IF NOT bHaltDone THEN
+					Stop(	bStop			:=		TRUE);
+				ELSE	
+					Stop(	bStop			:=		FALSE);
+					eStateAutoAxis			:=		E_StateSortingAutoAxis.WaitForCylinderAtWorkPos;
+				END_IF   
+	END_CASE
+	
+	CASE eStateAutoCylinder OF
+		E_StateSortingAutoCylinder.BoxDetected:
+		
+			itfCylinder.MoveToBase();
+			
+			IF fbSensorDelay.bOutputSignal THEN
+				eStateAutoCylinder			:=		E_StateSortingAutoCylinder.MoveCylToWorkPos;	
+			END_IF
+				
+		E_StateSortingAutoCylinder.MoveCylToWorkPos:
+		
+			itfCylinder.MoveToWork();
+			
+			IF itfCylinder.bState_AtWorkPos THEN
+				eStateAutoCylinder			:=		E_StateSortingAutoCylinder.MoveCylToBasePos;
+			END_IF
+			
+		E_StateSortingAutoCylinder.MoveCylToBasePos:
+			itfCylinder.MoveToBase();
+			
+			IF itfCylinder.bState_AtBasePos THEN
+				eStateAutoCylinder			:=		E_StateSortingAutoCylinder.BoxDetected;
+			END_IF	
+	END_CASE]]></ST>
+      </Implementation>
+    </Method>
+    <Property Name="bState_CylAtBasePos" Id="{b753a032-f87a-4904-afe1-28dcdab709dc}">
+      <Declaration><![CDATA[PROPERTY bState_CylAtBasePos : BOOL]]></Declaration>
+      <Get Name="Get" Id="{634187d1-99f7-49a2-abe8-b8ba9aa7be04}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[bState_CylAtBasePos			:=		itfCylinder.bState_AtBasePos;]]></ST>
+        </Implementation>
+      </Get>
+    </Property>
+    <Property Name="bState_CylAtWorkPos" Id="{92ec6e92-9efc-4b11-964d-502576d997f2}">
+      <Declaration><![CDATA[PROPERTY bState_CylAtWorkPos : BOOL]]></Declaration>
+      <Get Name="Get" Id="{7d42194f-d639-443c-8958-075057a69b3a}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[bState_CylAtWorkPos			:=		itfCylinder.bState_AtWorkPos;]]></ST>
+        </Implementation>
+      </Get>
+    </Property>
+    <Method Name="CylinderOptions" Id="{b347b23e-806d-431e-8710-b8d7a9ff9ab5}">
+      <Declaration><![CDATA[METHOD CylinderOptions
+VAR_INPUT
+	bCylDiag							:				BOOL;						// If TRUE cylinder has diagnostic functionality
+	bCylTemp							:				BOOL;						// If TRUE cylinder has temperature functionality
+	bCylRecord							:				BOOL;						// If TRUE cylinder has record functionality
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+	IF 	bCylDiag THEN
+		IF bCylTemp THEN
+			fbCylinderTempDiag.fTempMin				:=			nTempMinCyl;
+			fbCylinderTempDiag.fTempMax				:=			nTempMaxCyl;
+			bCylError								:=			fbCylinderTempDiag.bError;
+			sCylErrorMsg							:=			fbCylinderTempDiag.sErrorMsg;
+			itfCylinder								:=			fbCylinderTempDiag;
+		ELSE
+			bCylError								:=			fbCylinderDiag.bError;
+			sCylErrorMsg							:=			fbCylinderDiag.sErrorMsg;
+			fbCylinderDiag.nTimeOut					:=			tTimeOutCylinder;			
+			itfCylinder								:=			fbCylinderDiag;
+		END_IF
+	ELSE
+		bCylError									:=			FALSE;
+		sCylErrorMsg								:=			'';
+		
+		IF 	bCylTemp THEN
+			IF bCylRecord THEN
+				fbCylinderTempRec.nTimeInterval		:=			tTimeIntervalCylinder;
+				fbCylinderTempRec.bRecordStart		:=			bCompresAirEnableLocal;
+				
+				fbCylinderTempRec.Record();
+				
+				a_Temps								:=			fbCylinderTempRec.aRecords;
+				
+				itfCylinder	:= fbCylinderTempRec;
+			
+			ELSE
+				itfCylinder	:=	fbCylinderTemp;
+			END_IF
+		ELSE
+			itfCylinder	:= fbCylinder;
+		END_IF
+			
+	END_IF
+	
+	;
+	
+	
+	
+	
+	]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Enable" Id="{1639f444-8504-4240-9b3f-3b669453f42b}">
+      <Declaration><![CDATA[METHOD Enable
+VAR_INPUT
+	bComprAirEnable					:			BOOL;			// Enable of compressed air
+	bAxisEnable						:			BOOL;			// Enable of axis
+	bSensorEnable					:			BOOL;			// Enable of sensor
+	bManualAxisEnable				:			BOOL;			// Enable manual axis control
+END_VAR
+
+VAR
+	bManualEnable: BOOL;
+END_VAR]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+	SUPER^.Enable(	bComprAirEnable				:=	bComprAirEnable,
+					bAxisEnable					:=	bAxisEnable,
+					bSensorEnable				:=	bSensorEnable,
+					bManualAxisEnable			:=	bManualAxisEnable);
+					
+	fbSensorDelay.Enable(bEnable				:=	bSensorEnable);
+	
+	fbButtonCylMoveToWork.Enable(bEnable		:=	bManualCylinderEnableLocal AND NOT itfCylinder.bState_AtWorkPos);					// bManualAxisEnableLocal AND bComprAirEnabledLocal	
+	fbButtonCylMoveToBase.Enable(bEnable		:=	bManualCylinderEnableLocal AND NOT itfCylinder.bState_AtBasePos);					// bManualAxisEnableLocal AND bComprAirEnabledLocal
+	
+	fbButtonCylMoveToWork.bInputSignal			:=	NOT fbButtonCylMoveToBase.bInputSignal;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="InputOutput" Id="{0217b8cf-d36c-4c0f-b2a1-28b45245a175}">
+      <Declaration><![CDATA[METHOD InputOutput
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+	SUPER^.InputOutput();
+	
+	fbSensorDelay.SetOutput();
+	
+	
+	
+	fbButtonCylMoveToWork.SetOutput();
+	fbButtonCylMoveToBase.SetOutput();
+	
+	fbButtonCylMoveToWork.bInputSignal					:=		bButtonCylMoveToWorkIn;
+	fbButtonCylMoveToBase.bInputSignal					:=		bButtonCylMoveToBaseIn;
+	
+	bButtonCylMoveToWorkOut								:=		fbButtonCylMoveToWork.bOutputSignal;
+	bButtonCylMoveToBaseOut								:=		fbButtonCylMoveToBase.bOutputSignal;]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Maintenance" Id="{770913ac-2b66-445d-b7d1-73a1f828a233}">
+      <Declaration><![CDATA[METHOD Maintenance
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+	THIS^.Manual();]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Manual" Id="{d2cefb4b-0c9f-4969-bd55-5fe4f896fcf2}">
+      <Declaration><![CDATA[METHOD Manual
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[	
+	SUPER^.Manual();
+	
+	IF fbButtonCylMoveToWork.bOutputSignal THEN
+		itfCylinder.MoveToWork();
+	ELSIF	fbButtonCylMoveToBase.bOutputSignal THEN
+		itfCylinder.MoveToBase();
+	END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Property Name="nProp_CylTempMax" Id="{48992803-0bd1-4afc-a370-69cd8bd0bdc7}">
+      <Declaration><![CDATA[PROPERTY nProp_CylTempMax : LREAL]]></Declaration>
+      <Get Name="Get" Id="{96f08428-9c4d-407f-b5ba-2c5ac5d0ed57}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[nProp_CylTempMax		:=		nTempMaxCyl;]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{15cda981-a350-418b-a615-088e59540c7b}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[nTempMaxCyl			:=		nProp_CylTempMax;]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Property Name="nProp_CylTempMin" Id="{baf62ffc-b88e-4ea6-af5b-ecacc8eca619}">
+      <Declaration><![CDATA[PROPERTY nProp_CylTempMin : LREAL]]></Declaration>
+      <Get Name="Get" Id="{cc8bd3da-56b2-4d54-9440-4621c7be64d5}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[nProp_CylTempMin		:=		nTempMinCyl;]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{a64c9960-6a75-44e8-8562-2ddb891289d2}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[nTempMinCyl			:=		nProp_CylTempMin;]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Method Name="Reset" Id="{bcef8413-fcb8-493a-a14e-8cc16a459990}">
+      <Declaration><![CDATA[METHOD Reset
+VAR_INPUT
+	bReset				:			BOOL;			// True if machine is in state RESETTING
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+	SUPER^.Reset(	bReset			:=			bReset);
+	
+	IF fbTriggerResetStart.Q THEN
+	
+	fbTimerAxis(	IN				:=			FALSE);			
+	
+	itfCylinder.Reset();
+	
+	END_IF
+	
+	
+	]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="ResetState" Id="{1b1f2c60-74b1-49ba-8057-12522e8a424b}">
+      <Declaration><![CDATA[METHOD ResetState
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[// =========================================================
+	eStateAutoAxis					:=			E_StateSortingAutoAxis.WaitForCylinderAtWorkPos;
+	eStateAutoCylinder				:=			E_StateSortingAutoCylinder.BoxDetected;
+// =========================================================]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Semiautomatic" Id="{508b12d8-8b5e-4908-aaf1-ed38e7c55eae}">
+      <Declaration><![CDATA[METHOD Semiautomatic
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[	
+	THIS^.Automatic();]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Starting" Id="{486ca9e3-8b83-46fc-8ffd-7ee02073dc69}">
+      <Declaration><![CDATA[METHOD Starting
+VAR_INPUT
+	bStarting					:				BOOL;			// True if machine is in state STARTING
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+	SUPER^.Starting(	bStarting			:=			bStarting);
+	
+	fbSensorDelay.tDelay					:=			tSensorDelay;]]></ST>
+      </Implementation>
+    </Method>
+    <Property Name="tProp_AxisMoving" Id="{f6e230a7-8475-4329-8af5-327c8e9c17da}">
+      <Declaration><![CDATA[PROPERTY tProp_AxisMoving : TIME]]></Declaration>
+      <Get Name="Get" Id="{be6c9c1f-deb7-4911-b34b-11146febe38b}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[tProp_AxisMoving		:=		tMoveAxisDelay;]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{c3f55750-229d-4bf1-8ca2-6b895eee23a1}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[tMoveAxisDelay			:=		tProp_AxisMoving;]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Property Name="tProp_CylRecInterval" Id="{cb8918e5-f9cc-4c63-8fa7-59c624786535}">
+      <Declaration><![CDATA[PROPERTY tProp_CylRecInterval : TIME]]></Declaration>
+      <Get Name="Get" Id="{1eddf5d7-f0fc-4299-85bf-901d9874def3}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[tProp_CylRecInterval		:=			tTimeIntervalCylinder;]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{941b3763-780f-444b-a8cf-ae71672b5785}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[tTimeIntervalCylinder			:=			tProp_CylRecInterval;]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Property Name="tProp_CylTimeOut" Id="{474eedd5-19a7-4f7b-9714-588a2833dc6e}">
+      <Declaration><![CDATA[PROPERTY tProp_CylTimeOut : TIME]]></Declaration>
+      <Get Name="Get" Id="{5bf1002b-0d3c-4641-9f40-b1b40ff2737b}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[tProp_CylTimeOut			:=			tTimeOutCylinder;]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{ec0d092e-bfc2-4626-b0f4-6c3db17a487c}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[tTimeOutCylinder		:=			tProp_CylTimeOut;]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <Property Name="tProp_SensorDelay" Id="{d6d6e6e7-8e21-4eff-8657-b1688c617be5}">
+      <Declaration><![CDATA[PROPERTY tProp_SensorDelay : TIME]]></Declaration>
+      <Get Name="Get" Id="{fff513c7-0a17-4baa-9bcf-603b917b221d}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[tProp_SensorDelay			:=			fbSensorDelay;]]></ST>
+        </Implementation>
+      </Get>
+      <Set Name="Set" Id="{d20fdeec-4c9a-48f9-bb4b-e58602584d3d}">
+        <Declaration><![CDATA[VAR
+END_VAR
+]]></Declaration>
+        <Implementation>
+          <ST><![CDATA[fbSensorDelay			:=			tProp_SensorDelay;]]></ST>
+        </Implementation>
+      </Set>
+    </Property>
+    <LineIds Name="FB_SortingModule">
+      <LineId Id="9" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.Automatic">
+      <LineId Id="7" Count="0" />
+      <LineId Id="6" Count="0" />
+      <LineId Id="5" Count="0" />
+      <LineId Id="8" Count="0" />
+      <LineId Id="17" Count="0" />
+      <LineId Id="10" Count="1" />
+      <LineId Id="13" Count="1" />
+      <LineId Id="29" Count="0" />
+      <LineId Id="12" Count="0" />
+      <LineId Id="15" Count="1" />
+      <LineId Id="19" Count="1" />
+      <LineId Id="33" Count="1" />
+      <LineId Id="32" Count="0" />
+      <LineId Id="21" Count="0" />
+      <LineId Id="36" Count="1" />
+      <LineId Id="35" Count="0" />
+      <LineId Id="30" Count="0" />
+      <LineId Id="23" Count="1" />
+      <LineId Id="22" Count="0" />
+      <LineId Id="25" Count="1" />
+      <LineId Id="38" Count="0" />
+      <LineId Id="40" Count="1" />
+      <LineId Id="39" Count="0" />
+      <LineId Id="43" Count="0" />
+      <LineId Id="27" Count="0" />
+      <LineId Id="31" Count="0" />
+      <LineId Id="44" Count="0" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="45" Count="2" />
+      <LineId Id="59" Count="1" />
+      <LineId Id="63" Count="3" />
+      <LineId Id="53" Count="0" />
+      <LineId Id="50" Count="0" />
+      <LineId Id="55" Count="0" />
+      <LineId Id="62" Count="0" />
+      <LineId Id="61" Count="0" />
+      <LineId Id="67" Count="0" />
+      <LineId Id="56" Count="0" />
+      <LineId Id="51" Count="0" />
+      <LineId Id="68" Count="0" />
+      <LineId Id="52" Count="0" />
+      <LineId Id="57" Count="0" />
+      <LineId Id="70" Count="0" />
+      <LineId Id="69" Count="0" />
+      <LineId Id="58" Count="0" />
+      <LineId Id="48" Count="0" />
+      <LineId Id="71" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.bState_CylAtBasePos.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.bState_CylAtWorkPos.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.CylinderOptions">
+      <LineId Id="13" Count="0" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="17" Count="0" />
+      <LineId Id="27" Count="1" />
+      <LineId Id="25" Count="1" />
+      <LineId Id="19" Count="0" />
+      <LineId Id="21" Count="0" />
+      <LineId Id="23" Count="1" />
+      <LineId Id="46" Count="0" />
+      <LineId Id="22" Count="0" />
+      <LineId Id="20" Count="0" />
+      <LineId Id="29" Count="0" />
+      <LineId Id="31" Count="4" />
+      <LineId Id="37" Count="0" />
+      <LineId Id="45" Count="0" />
+      <LineId Id="47" Count="0" />
+      <LineId Id="49" Count="2" />
+      <LineId Id="48" Count="0" />
+      <LineId Id="39" Count="3" />
+      <LineId Id="38" Count="0" />
+      <LineId Id="36" Count="0" />
+      <LineId Id="43" Count="1" />
+      <LineId Id="30" Count="0" />
+      <LineId Id="18" Count="0" />
+      <LineId Id="16" Count="0" />
+      <LineId Id="10" Count="2" />
+      <LineId Id="5" Count="0" />
+      <LineId Id="14" Count="1" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.Enable">
+      <LineId Id="13" Count="0" />
+      <LineId Id="12" Count="0" />
+      <LineId Id="14" Count="9" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.InputOutput">
+      <LineId Id="6" Count="0" />
+      <LineId Id="5" Count="0" />
+      <LineId Id="18" Count="3" />
+      <LineId Id="14" Count="2" />
+      <LineId Id="7" Count="2" />
+      <LineId Id="12" Count="1" />
+      <LineId Id="17" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.Maintenance">
+      <LineId Id="6" Count="0" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.Manual">
+      <LineId Id="5" Count="4" />
+      <LineId Id="11" Count="1" />
+      <LineId Id="10" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.nProp_CylTempMax.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.nProp_CylTempMax.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.nProp_CylTempMin.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.nProp_CylTempMin.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.Reset">
+      <LineId Id="7" Count="0" />
+      <LineId Id="6" Count="0" />
+      <LineId Id="10" Count="1" />
+      <LineId Id="15" Count="0" />
+      <LineId Id="17" Count="1" />
+      <LineId Id="14" Count="0" />
+      <LineId Id="12" Count="0" />
+      <LineId Id="16" Count="0" />
+      <LineId Id="13" Count="0" />
+      <LineId Id="8" Count="1" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.ResetState">
+      <LineId Id="6" Count="2" />
+      <LineId Id="5" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.Semiautomatic">
+      <LineId Id="5" Count="1" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.Starting">
+      <LineId Id="7" Count="0" />
+      <LineId Id="6" Count="0" />
+      <LineId Id="8" Count="1" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.tProp_AxisMoving.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.tProp_AxisMoving.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.tProp_CylRecInterval.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.tProp_CylRecInterval.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.tProp_CylTimeOut.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.tProp_CylTimeOut.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.tProp_SensorDelay.Get">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_SortingModule.tProp_SensorDelay.Set">
+      <LineId Id="2" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>

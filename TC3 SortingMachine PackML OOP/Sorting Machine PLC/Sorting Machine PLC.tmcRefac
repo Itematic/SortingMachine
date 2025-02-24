@@ -41,5 +41,10 @@
       <From>POU</From>
       <To>FB_SignalHandlingDelay</To>
     </RenamedType>
+    <RenamedType>
+      <Type guid="3bb431fc-d0a7-4269-85fa-ef5d2aa1e043">E_STATESEPARATINGAUTOCLAMP</Type>
+      <From>E_StateSeparatingAutoClamp</From>
+      <To>E_StateSeparatingAutoClampBarrier</To>
+    </RenamedType>
   </Renames>
 </Refactors>
