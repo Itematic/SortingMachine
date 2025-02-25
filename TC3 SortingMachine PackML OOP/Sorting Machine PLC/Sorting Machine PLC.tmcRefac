@@ -46,5 +46,30 @@
       <From>E_StateSeparatingAutoClamp</From>
       <To>E_StateSeparatingAutoClampBarrier</To>
     </RenamedType>
+    <RenamedSymbol>
+      <Type guid="3668b145-0585-4c98-8643-0094daaebffe">PS_PackML_StateMachine_Auto</Type>
+      <From>Reset</From>
+      <To>StateComplete</To>
+    </RenamedSymbol>
+    <RenamedSymbol>
+      <Type guid="3668b145-0585-4c98-8643-0094daaebffe">PS_PackML_StateMachine_Auto</Type>
+      <From>Resete</From>
+      <To>Reset</To>
+    </RenamedSymbol>
+    <RenamedType>
+      <Type guid="1eac16f3-0d88-462f-afee-febb7f7e921c">PS_PACKML_STATEMACHINE_AUTO_1</Type>
+      <From>PS_PackML_StateMachine_Auto_1</From>
+      <To>PS_PackML_StateMachine_SemiAuto</To>
+    </RenamedType>
+    <RenamedType>
+      <Type guid="a17d4788-3820-47a8-bdc8-b03cc0c064eb">PS_PACKML_STATEMACHINE_AUTO_1</Type>
+      <From>PS_PackML_StateMachine_Auto_1</From>
+      <To>PS_PackML_StateMachine_Manual</To>
+    </RenamedType>
+    <RenamedType>
+      <Type guid="980fd8b0-f68d-4cc0-a5d1-6dec9c161ba0">PS_PACKML_STATEMACHINE_AUTO_1</Type>
+      <From>PS_PackML_StateMachine_Auto_1</From>
+      <To>PS_PackML_StateMachine_Maintenance</To>
+    </RenamedType>
   </Renames>
 </Refactors>

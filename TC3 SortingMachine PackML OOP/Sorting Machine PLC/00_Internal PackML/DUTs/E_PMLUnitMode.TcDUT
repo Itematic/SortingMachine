@@ -1,0 +1,22 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="E_PMLUnitMode" Id="{0416e5b2-76c5-44fc-96ad-2a44ad1577db}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+{attribute 'strict'}
+TYPE E_PMLUnitMode :
+(
+	UNDEFINED 			:=	0,
+	AUTOMATIC			:=	1,
+	MAINTENANCE			:=	2,
+	MANUAL				:=	3,
+	SEMIAUTOMATIC		:=	4,
+	DRYRUN				:=	5,
+	USERMODE1			:=	6,
+	USERMODE2			:=	7,
+	IDLE				:=	8,
+	ESTOP				:=	9
+);
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

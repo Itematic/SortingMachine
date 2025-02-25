@@ -1,0 +1,30 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <DUT Name="E_PMLState" Id="{6c3baf1d-a6e6-41a2-86f1-05f0f4ca6875}">
+    <Declaration><![CDATA[{attribute 'qualified_only'}
+{attribute 'strict'}
+TYPE E_PMLState :
+(
+	UNDEFINED 			:=	0,
+	CLEARING			:=	1,
+	STOPPED				:=	2,
+	STARTING			:=	3,
+	IDLE				:=	4,
+	SUSPENDED			:=	5,
+	EXECUTE				:=	6,
+	STOPPING			:=	7,
+	ABORTING			:=	8,
+	ABORTED				:=	9,
+	HOLDING				:=	10,
+	HELD				:=	11,
+	UNHOLDING			:=	12,
+	SUSPENDING			:=	13,
+	UNSUSPENDING		:=	14,
+	RESETTING			:=	15,
+	COMPLETING			:=	16,
+	COMPLETE			:=	17
+);
+END_TYPE
+]]></Declaration>
+  </DUT>
+</TcPlcObject>

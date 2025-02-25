@@ -18,6 +18,24 @@
     <LibraryReferences>{c905295d-1f2e-482d-97ae-15b29896c0a7}</LibraryReferences>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="00_Internal PackML\DUTs\E_PMLState.TcDUT">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="00_Internal PackML\DUTs\E_PMLUnitMode.TcDUT">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="00_Internal PackML\POUs\PS_PackML_StateMachine_Auto.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="00_Internal PackML\POUs\PS_PackML_StateMachine_Maintenance.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="00_Internal PackML\POUs\PS_PackML_StateMachine_Manual.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
+    <Compile Include="00_Internal PackML\POUs\PS_PackML_StateMachine_SemiAuto.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="01_Submodules\Axis\FB_Axis.TcPOU">
       <SubType>Code</SubType>
     </Compile>
@@ -69,6 +87,9 @@
     <Compile Include="02_Subsystems\FB_SubsystemRoot.TcPOU">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="03_Machine\FB_Machine.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="PlcTask.TcTTO">
       <SubType>Code</SubType>
     </Compile>
@@ -77,12 +98,15 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
+    <Folder Include="00_Internal PackML\DUTs" />
+    <Folder Include="00_Internal PackML\POUs" />
     <Folder Include="01_Submodules" />
     <Folder Include="01_Submodules\Axis" />
     <Folder Include="01_Submodules\Cylinder" />
     <Folder Include="01_Submodules\Sensor %28signal handling%29" />
     <Folder Include="02_Subsystems" />
     <Folder Include="03_Machine" />
+    <Folder Include="00_Internal PackML" />
     <Folder Include="VISUs" />
     <Folder Include="04_Application" />
   </ItemGroup>

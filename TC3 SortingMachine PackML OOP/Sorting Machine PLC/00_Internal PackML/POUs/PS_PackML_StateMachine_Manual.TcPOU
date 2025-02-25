@@ -1,0 +1,459 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="PS_PackML_StateMachine_Manual" Id="{a17d4788-3820-47a8-bdc8-b03cc0c064eb}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK PS_PackML_StateMachine_Manual
+VAR_INPUT
+	Start					:	BOOL;
+	Hold					:	BOOL;
+	UnHold					:	BOOL;
+	Suspend					:	BOOL;
+	UnSuspend				:	BOOL;
+	Abort					:	BOOL;
+	Stop					:	BOOL;
+	Complete				:	BOOL;
+	Clear					:	BOOL;
+	Reset					:	BOOL;
+	StateComplete			:	BOOL;
+END_VAR
+VAR_OUTPUT
+	Status					:	WORD;
+	// Transient states
+	ST_Starting				:	BOOL;
+	ST_Completing			:	BOOL;
+	ST_Resetting			:	BOOL;
+	ST_Holding				:	BOOL;
+	ST_UnHolding			:	BOOL;
+	ST_Suspending			:	BOOL;
+	ST_UnSuspending			:	BOOL;
+	ST_Clearing				:	BOOL;
+	ST_Stopping				:	BOOL;
+	ST_Aborting				:	BOOL;
+	// Final states
+	ST_Execute				:	BOOL;
+	ST_Complete				:	BOOL;
+	ST_Idle					:	BOOL;
+	ST_Held					:	BOOL;
+	ST_Suspended			:	BOOL;
+	ST_Stopped				:	BOOL;
+	ST_Aborted				:	BOOL;
+	
+	Error					:	BOOL;
+	ErrorID					:	DWORD;
+	ePMLState				:	E_PMLState	:=	E_PMLState.IDLE;
+END_VAR
+VAR
+	ePMLStatePrev			:	E_PMLState;
+	bStateChange			:	BOOL;
+	bStateCompletePrev		:	BOOL;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[	// Check for E_PMLState change
+	IF ePMLStatePrev <> ePMLState THEN
+		ePMLStatePrev	:=	ePMLState;
+		bStateChange	:=	TRUE;
+	ELSE
+		bStateChange	:=	FALSE;
+	END_IF
+	
+	// change to new state if requested
+	CASE ePMLState OF
+		E_PMLState.UNDEFINED:
+			IF bStateChange	THEN
+				ST_Starting				:=	FALSE;
+				ST_Completing			:=	FALSE;
+				ST_Resetting			:=	FALSE;
+				ST_Holding				:=	FALSE;
+				ST_UnHolding			:=	FALSE;
+				ST_Suspending			:=	FALSE;
+				ST_UnSuspending			:=	FALSE;
+				ST_Clearing				:=	FALSE;
+				ST_Stopping				:=	FALSE;
+				ST_Aborting				:=	FALSE;
+				
+				ST_Execute				:=	FALSE;
+				ST_Complete				:=	FALSE;
+				ST_Idle					:=	FALSE;
+				ST_Held					:=	FALSE;
+				ST_Suspended			:=	FALSE;
+				ST_Stopped				:=	FALSE;
+				ST_Aborted				:=	FALSE;
+			END_IF
+			
+			IF Abort THEN
+				ePMLState				:=	E_PMLState.ABORTING;
+				ST_Aborting				:=	TRUE;
+			ELSIF Stop THEN
+				ePMLState				:=	E_PMLState.STOPPING;
+				ST_Stopping				:=	TRUE;				
+			END_IF
+		E_PMLState.IDLE:
+			IF bStateChange	THEN
+				ST_Starting				:=	FALSE;
+				ST_Completing			:=	FALSE;
+				ST_Resetting			:=	FALSE;
+				ST_Holding				:=	FALSE;
+				ST_UnHolding			:=	FALSE;
+				ST_Suspending			:=	FALSE;
+				ST_UnSuspending			:=	FALSE;
+				ST_Clearing				:=	FALSE;
+				ST_Stopping				:=	FALSE;
+				ST_Aborting				:=	FALSE;
+				
+				ST_Execute				:=	FALSE;
+				ST_Complete				:=	FALSE;
+				ST_Idle					:=	TRUE;
+				ST_Held					:=	FALSE;
+				ST_Suspended			:=	FALSE;
+				ST_Stopped				:=	FALSE;
+				ST_Aborted				:=	FALSE;
+			END_IF
+			
+			IF Abort THEN
+				ePMLState				:=	E_PMLState.ABORTING;
+				ST_IDLE					:=	FALSE;
+				ST_Aborting				:=	TRUE;
+			ELSIF Stop THEN
+				ePMLState				:=	E_PMLState.STOPPING;
+				ST_IDLE					:=	FALSE;
+				ST_Stopping				:=	TRUE;
+			ELSIF Start THEN
+				ePMLState				:=	E_PMLState.STARTING;
+				ST_IDLE					:=	FALSE;
+				ST_Starting				:=	TRUE;								
+			END_IF
+
+		E_PMLState.STARTING:
+			IF bStateChange	THEN
+				ST_Starting				:=	TRUE;
+				ST_Completing			:=	FALSE;
+				ST_Resetting			:=	FALSE;
+				ST_Holding				:=	FALSE;
+				ST_UnHolding			:=	FALSE;
+				ST_Suspending			:=	FALSE;
+				ST_UnSuspending			:=	FALSE;
+				ST_Clearing				:=	FALSE;
+				ST_Stopping				:=	FALSE;
+				ST_Aborting				:=	FALSE;
+				
+				ST_Execute				:=	FALSE;
+				ST_Complete				:=	FALSE;
+				ST_Idle					:=	FALSE;
+				ST_Held					:=	FALSE;
+				ST_Suspended			:=	FALSE;
+				ST_Stopped				:=	FALSE;
+				ST_Aborted				:=	FALSE;
+			END_IF
+			
+			IF Abort THEN
+				ePMLState				:=	E_PMLState.ABORTING;
+				ST_Starting				:=	FALSE;
+				ST_Aborting				:=	TRUE;
+			ELSIF Stop THEN
+				ePMLState				:=	E_PMLState.STOPPING;
+				ST_Starting				:=	FALSE;
+				ST_Stopping				:=	TRUE;
+			ELSIF StateComplete AND NOT bStateCompletePrev THEN
+				ePMLState				:=	E_PMLState.EXECUTE;
+				bStateCompletePrev		:=	StateComplete;
+				ST_Starting				:=	FALSE;
+				ST_Execute				:=	TRUE;								
+			END_IF
+
+		E_PMLState.EXECUTE:
+			IF bStateChange	THEN
+				ST_Starting				:=	FALSE;
+				ST_Completing			:=	FALSE;
+				ST_Resetting			:=	FALSE;
+				ST_Holding				:=	FALSE;
+				ST_UnHolding			:=	FALSE;
+				ST_Suspending			:=	FALSE;
+				ST_UnSuspending			:=	FALSE;
+				ST_Clearing				:=	FALSE;
+				ST_Stopping				:=	FALSE;
+				ST_Aborting				:=	FALSE;
+				
+				ST_Execute				:=	TRUE;
+				ST_Complete				:=	FALSE;
+				ST_Idle					:=	FALSE;
+				ST_Held					:=	FALSE;
+				ST_Suspended			:=	FALSE;
+				ST_Stopped				:=	FALSE;
+				ST_Aborted				:=	FALSE;
+			END_IF
+			
+			IF Abort THEN
+				ePMLState				:=	E_PMLState.ABORTING;
+				ST_Execute				:=	FALSE;
+				ST_Aborting				:=	TRUE;
+			ELSIF Stop THEN
+				ePMLState				:=	E_PMLState.STOPPING;
+				ST_Execute				:=	FALSE;
+				ST_Stopping				:=	TRUE;
+			END_IF
+
+		E_PMLState.RESETTING:
+			IF bStateChange	THEN
+				ST_Starting				:=	FALSE;
+				ST_Completing			:=	FALSE;
+				ST_Resetting			:=	TRUE;
+				ST_Holding				:=	FALSE;
+				ST_UnHolding			:=	FALSE;
+				ST_Suspending			:=	FALSE;
+				ST_UnSuspending			:=	FALSE;
+				ST_Clearing				:=	FALSE;
+				ST_Stopping				:=	FALSE;
+				ST_Aborting				:=	FALSE;
+				
+				ST_Execute				:=	FALSE;
+				ST_Complete				:=	FALSE;
+				ST_Idle					:=	FALSE;
+				ST_Held					:=	FALSE;
+				ST_Suspended			:=	FALSE;
+				ST_Stopped				:=	FALSE;
+				ST_Aborted				:=	FALSE;
+			END_IF
+			
+			IF Abort THEN
+				ePMLState				:=	E_PMLState.ABORTING;
+				ST_Resetting			:=	FALSE;
+				ST_Aborting				:=	TRUE;
+			ELSIF Stop THEN
+				ePMLState				:=	E_PMLState.STOPPING;
+				ST_Resetting			:=	FALSE;
+				ST_Stopping				:=	TRUE;
+			ELSIF StateComplete AND NOT bStateCompletePrev THEN
+				ePMLState				:=	E_PMLState.IDLE;
+				bStateCompletePrev		:=	StateComplete;
+				ST_Resetting			:=	FALSE;
+				ST_Idle					:=	TRUE;								
+			END_IF
+		
+		E_PMLState.STOPPING:
+			IF bStateChange	THEN
+				ST_Starting				:=	FALSE;
+				ST_Completing			:=	FALSE;
+				ST_Resetting			:=	FALSE;
+				ST_Holding				:=	FALSE;
+				ST_UnHolding			:=	FALSE;
+				ST_Suspending			:=	FALSE;
+				ST_UnSuspending			:=	FALSE;
+				ST_Clearing				:=	FALSE;
+				ST_Stopping				:=	TRUE;
+				ST_Aborting				:=	FALSE;
+				
+				ST_Execute				:=	FALSE;
+				ST_Complete				:=	FALSE;
+				ST_Idle					:=	FALSE;
+				ST_Held					:=	FALSE;
+				ST_Suspended			:=	FALSE;
+				ST_Stopped				:=	FALSE;
+				ST_Aborted				:=	FALSE;
+			END_IF
+			
+			IF Abort THEN
+				ePMLState				:=	E_PMLState.ABORTING;
+				ST_Stopping				:=	FALSE;
+				ST_Aborting				:=	TRUE;
+			ELSIF StateComplete AND NOT bStateCompletePrev THEN
+				ePMLState				:=	E_PMLState.STOPPED;
+				bStateCompletePrev		:=	StateComplete;
+				ST_Stopping				:=	FALSE;
+				ST_Stopped				:=	TRUE;								
+			END_IF
+
+		E_PMLState.STOPPED:
+			IF bStateChange	THEN
+				ST_Starting				:=	FALSE;
+				ST_Completing			:=	FALSE;
+				ST_Resetting			:=	FALSE;
+				ST_Holding				:=	FALSE;
+				ST_UnHolding			:=	FALSE;
+				ST_Suspending			:=	FALSE;
+				ST_UnSuspending			:=	FALSE;
+				ST_Clearing				:=	FALSE;
+				ST_Stopping				:=	FALSE;
+				ST_Aborting				:=	FALSE;
+				
+				ST_Execute				:=	FALSE;
+				ST_Complete				:=	FALSE;
+				ST_Idle					:=	FALSE;
+				ST_Held					:=	FALSE;
+				ST_Suspended			:=	FALSE;
+				ST_Stopped				:=	TRUE;
+				ST_Aborted				:=	FALSE;
+			END_IF
+			
+			IF Abort THEN
+				ePMLState				:=	E_PMLState.ABORTING;
+				ST_Stopped				:=	FALSE;
+				ST_Aborting				:=	TRUE;
+			ELSIF Reset THEN
+				ePMLState				:=	E_PMLState.RESETTING;
+				ST_Stopped				:=	FALSE;
+				ST_Resetting			:=	TRUE;
+			END_IF
+		
+		E_PMLState.ABORTING:
+			IF bStateChange	THEN
+				ST_Starting				:=	FALSE;
+				ST_Completing			:=	FALSE;
+				ST_Resetting			:=	FALSE;
+				ST_Holding				:=	FALSE;
+				ST_UnHolding			:=	FALSE;
+				ST_Suspending			:=	FALSE;
+				ST_UnSuspending			:=	FALSE;
+				ST_Clearing				:=	FALSE;
+				ST_Stopping				:=	FALSE;
+				ST_Aborting				:=	TRUE;
+				
+				ST_Execute				:=	FALSE;
+				ST_Complete				:=	FALSE;
+				ST_Idle					:=	FALSE;
+				ST_Held					:=	FALSE;
+				ST_Suspended			:=	FALSE;
+				ST_Stopped				:=	FALSE;
+				ST_Aborted				:=	FALSE;
+			END_IF
+			
+			IF StateComplete AND NOT bStateCompletePrev THEN
+				ePMLState				:=	E_PMLState.ABORTED;
+				bStateCompletePrev		:=	StateComplete;
+				ST_Aborting				:=	FALSE;
+				ST_Aborted				:=	TRUE;								
+			END_IF
+			
+		E_PMLState.ABORTED:
+			IF bStateChange	THEN
+				ST_Starting				:=	FALSE;
+				ST_Completing			:=	FALSE;
+				ST_Resetting			:=	FALSE;
+				ST_Holding				:=	FALSE;
+				ST_UnHolding			:=	FALSE;
+				ST_Suspending			:=	FALSE;
+				ST_UnSuspending			:=	FALSE;
+				ST_Clearing				:=	FALSE;
+				ST_Stopping				:=	FALSE;
+				ST_Aborting				:=	FALSE;
+				
+				ST_Execute				:=	FALSE;
+				ST_Complete				:=	FALSE;
+				ST_Idle					:=	FALSE;
+				ST_Held					:=	FALSE;
+				ST_Suspended			:=	FALSE;
+				ST_Stopped				:=	FALSE;
+				ST_Aborted				:=	TRUE;
+			END_IF
+			
+			IF Clear THEN
+				ePMLState				:=	E_PMLState.CLEARING;
+				ST_Aborted				:=	FALSE;
+				ST_Clearing				:=	TRUE;
+			END_IF
+		
+		E_PMLState.CLEARING:
+			IF bStateChange	THEN
+				ST_Starting				:=	FALSE;
+				ST_Completing			:=	FALSE;
+				ST_Resetting			:=	FALSE;
+				ST_Holding				:=	FALSE;
+				ST_UnHolding			:=	FALSE;
+				ST_Suspending			:=	FALSE;
+				ST_UnSuspending			:=	FALSE;
+				ST_Clearing				:=	TRUE;
+				ST_Stopping				:=	FALSE;
+				ST_Aborting				:=	FALSE;
+				
+				ST_Execute				:=	FALSE;
+				ST_Complete				:=	FALSE;
+				ST_Idle					:=	FALSE;
+				ST_Held					:=	FALSE;
+				ST_Suspended			:=	FALSE;
+				ST_Stopped				:=	FALSE;
+				ST_Aborted				:=	FALSE;
+			END_IF
+			
+			IF Abort THEN
+				ePMLState				:=	E_PMLState.ABORTING;
+				ST_Clearing				:=	FALSE;
+				ST_Aborting				:=	TRUE;
+			ELSIF Stop THEN
+				ePMLState				:=	E_PMLState.STOPPING;
+				ST_Clearing				:=	FALSE;
+				ST_Stopping				:=	TRUE;
+			ELSIF StateComplete AND NOT bStateCompletePrev THEN
+				ePMLState				:=	E_PMLState.STOPPED;
+				bStateCompletePrev		:=	StateComplete;
+				ST_Clearing				:=	FALSE;
+				ST_Stopped				:=	TRUE;								
+			END_IF
+		
+	END_CASE
+	
+	// bStateCompletePrev := bStateCompletePrev AND StateComplete;]]></ST>
+    </Implementation>
+    <LineIds Name="PS_PackML_StateMachine_Manual">
+      <LineId Id="120" Count="2" />
+      <LineId Id="124" Count="2" />
+      <LineId Id="123" Count="0" />
+      <LineId Id="127" Count="2" />
+      <LineId Id="133" Count="0" />
+      <LineId Id="150" Count="0" />
+      <LineId Id="156" Count="16" />
+      <LineId Id="154" Count="1" />
+      <LineId Id="173" Count="2" />
+      <LineId Id="177" Count="1" />
+      <LineId Id="180" Count="1" />
+      <LineId Id="176" Count="0" />
+      <LineId Id="134" Count="0" />
+      <LineId Id="185" Count="23" />
+      <LineId Id="214" Count="0" />
+      <LineId Id="209" Count="1" />
+      <LineId Id="215" Count="0" />
+      <LineId Id="211" Count="1" />
+      <LineId Id="216" Count="1" />
+      <LineId Id="213" Count="0" />
+      <LineId Id="184" Count="0" />
+      <LineId Id="183" Count="0" />
+      <LineId Id="182" Count="0" />
+      <LineId Id="221" Count="29" />
+      <LineId Id="254" Count="1" />
+      <LineId Id="252" Count="1" />
+      <LineId Id="219" Count="1" />
+      <LineId Id="218" Count="0" />
+      <LineId Id="259" Count="28" />
+      <LineId Id="1130" Count="1" />
+      <LineId Id="408" Count="0" />
+      <LineId Id="412" Count="33" />
+      <LineId Id="310" Count="0" />
+      <LineId Id="409" Count="0" />
+      <LineId Id="901" Count="0" />
+      <LineId Id="908" Count="24" />
+      <LineId Id="936" Count="0" />
+      <LineId Id="938" Count="3" />
+      <LineId Id="902" Count="0" />
+      <LineId Id="907" Count="0" />
+      <LineId Id="906" Count="0" />
+      <LineId Id="942" Count="24" />
+      <LineId Id="970" Count="0" />
+      <LineId Id="972" Count="2" />
+      <LineId Id="903" Count="1" />
+      <LineId Id="975" Count="0" />
+      <LineId Id="978" Count="20" />
+      <LineId Id="1003" Count="4" />
+      <LineId Id="976" Count="0" />
+      <LineId Id="1008" Count="0" />
+      <LineId Id="900" Count="0" />
+      <LineId Id="1009" Count="20" />
+      <LineId Id="1034" Count="4" />
+      <LineId Id="905" Count="0" />
+      <LineId Id="564" Count="0" />
+      <LineId Id="865" Count="33" />
+      <LineId Id="492" Count="0" />
+      <LineId Id="148" Count="0" />
+      <LineId Id="131" Count="0" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="1039" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>
