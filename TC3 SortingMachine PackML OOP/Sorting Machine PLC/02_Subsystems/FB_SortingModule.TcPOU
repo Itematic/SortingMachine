@@ -157,12 +157,12 @@ END_VAR
 			fbCylinderTempDiag.fTempMax				:=			nTempMaxCyl;
 			bCylError								:=			fbCylinderTempDiag.bError;
 			sCylErrorMsg							:=			fbCylinderTempDiag.sErrorMsg;
-			itfCylinder								:=			fbCylinderTempDiag;
+				itfCylinder								:=			fbCylinderTempDiag;
 		ELSE
 			bCylError								:=			fbCylinderDiag.bError;
 			sCylErrorMsg							:=			fbCylinderDiag.sErrorMsg;
 			fbCylinderDiag.nTimeOut					:=			tTimeOutCylinder;			
-			itfCylinder								:=			fbCylinderDiag;
+				itfCylinder								:=			fbCylinderDiag;
 		END_IF
 	ELSE
 		bCylError									:=			FALSE;
@@ -177,13 +177,13 @@ END_VAR
 				
 				a_Temps								:=			fbCylinderTempRec.aRecords;
 				
-				itfCylinder	:= fbCylinderTempRec;
+					itfCylinder	:= fbCylinderTempRec;
 			
 			ELSE
-				itfCylinder	:=	fbCylinderTemp;
+					itfCylinder	:=	fbCylinderTemp;
 			END_IF
 		ELSE
-			itfCylinder	:= fbCylinder;
+					itfCylinder	:= fbCylinder;
 		END_IF
 			
 	END_IF

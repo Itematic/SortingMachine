@@ -36,6 +36,9 @@
     <Compile Include="00_Internal PackML\POUs\PS_PackML_StateMachine_SemiAuto.TcPOU">
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="00_Internal PackML\POUs\PS_PackML_UnitModeManager.TcPOU">
+      <SubType>Code</SubType>
+    </Compile>
     <Compile Include="01_Submodules\Axis\FB_Axis.TcPOU">
       <SubType>Code</SubType>
     </Compile>

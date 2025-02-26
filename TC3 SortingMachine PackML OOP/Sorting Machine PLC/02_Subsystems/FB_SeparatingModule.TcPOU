@@ -8,7 +8,7 @@ VAR_INPUT
 	bExecute							:				BOOL;							// True in state EXECUTE
 	bSemiStart							:				BOOL;							// Trigger for single process execution in semi-automatic mode
 
-	nBoxOnConveyor						:				BOOL;							// Actual number of boxes being processed
+	nBoxOnConveyor						:				UINT;							// Actual number of boxes being processed
 	
 	// ========================== Button control for cylinders ======================================================================
 	bButtonClampToWorkIn				:				BOOL;							// Signal from button to move clamp cylinder to work position

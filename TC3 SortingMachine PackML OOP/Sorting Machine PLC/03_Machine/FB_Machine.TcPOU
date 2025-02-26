@@ -3,11 +3,104 @@
   <POU Name="FB_Machine" Id="{7df4617e-7bb3-4f25-9837-0921844f24cd}" SpecialFunc="None">
     <Declaration><![CDATA[FUNCTION_BLOCK FB_Machine
 VAR_INPUT
+	// ========================== SEPARATING MODULE =======================================
+	// Separating module - clamp cylinder
+	bSeparatingClampDiag						:		BOOL	:=	FALSE;
+	bSeparatingClampTemp						:		BOOL	:=	TRUE;
+	bSeparatingClampRecord						:		BOOL	:=	TRUE;
+	// Separating module - barrier cylinder
+	bSeparatingBarrierDiag						:		BOOL	:=	TRUE;
+	bSeparatingBarrierTemp						:		BOOL	:=	TRUE;
+	bSeparatingBarrierRecord					:		BOOL	:=	FALSE;
+	// ========================== SORTING MODULES ==========================================
+	bMetalSortingCylinderDiag					:		BOOL	:= 	TRUE;
+	bMetalSortingCylinderTemp					:		BOOL	:=	FALSE;
+	bMetalSortingCylinderRecord					:		BOOL	:=	FALSE;
 	
-END_VAR
-VAR_OUTPUT
+	bPlasticSortingCylinderDiag					:		BOOL	:=	FALSE;
+	bPlasticSortingCylinderTemp					:		BOOL	:=	FALSE;
+	bPlasticSortingCylinderRecord				:		BOOL	:=	FALSE;
 END_VAR
 VAR
+	// ============================= ERROR ==================================================
+	bError										:		BOOL;
+	// ========================== Axis Variable =============================================
+	fAxisVelo									:		LREAL;
+	fAxisVeloLastCycle							:		LREAL;
+	// ======================== State machine variables =====================================
+	bStarted									:		BOOL;
+	bStopped									:		BOOL;
+	bReset								AT %Q* 	: 		BOOL;
+	bAborted									:		BOOL;
+	bIdle										:		BOOL;
+	bAuto										:		BOOL;
+	bSemi										:		BOOL;
+	bManual										:		BOOL;
+	bMaintenance								:		BOOL;
+	// ========================== Machine submodules ========================================
+	fbSeparatingModule							:		FB_SeparatingModule;
+	fbMetalSortingModule						:		FB_SortingModule;
+	fbPlasticSortingModule						:		FB_SortingModule;
+	fbComprAir									:		FB_SignalHandlingIntern;
+	fbPowerSupply								:		FB_SignalHandlingIntern;
+	// Visualization
+	// ========================== Buttons ========================================
+	fbButtonStart								:		FB_SignalHandlingIntern;
+	fbButtonStop								:		FB_SignalHandlingIntern;
+	fbButtonReset								:		FB_SignalHandlingIntern;
+	fbButtonAbort								:		FB_SignalHandlingIntern;
+	fbButtonAuto								:		FB_SignalHandlingIntern;
+	fbButtonSemi								:		FB_SignalHandlingIntern;
+	fbButtonManual								:		FB_SignalHandlingIntern;
+	fbButtonMaintenance							:		FB_SignalHandlingIntern;
+	fbButtonComprAir							:		FB_SignalHandlingIntern;
+	fbButtonPower								:		FB_SignalHandlingIntern;
+	// ========================== State machine ==================================
+	fbStateMachineAuto							:		PS_PackML_StateMachine_Auto;
+	fbStateMachineSemiAuto						:		PS_PackML_StateMachine_SemiAuto;
+	fbStateMachineManual						:		PS_PackML_StateMachine_Manual;
+	fbStateMachineMaintenance					:		PS_PackML_StateMachine_Maintenance;
+	
+	e_PMLState									:		E_PMLState			:=	E_PMLState.IDLE;
+	e_PMLStateRequest							:		E_PMLState;
+	e_PMLUnitMode								:		E_PMLUnitMode		:=	E_PMLUnitMode.IDLE;
+	e_PMLUnitModeRequest						:		E_PMLUnitMode;
+	// fbUnitModeManager
+	// ======================= Common variables ===================================
+	bInit										:		BOOL;
+	bAxisEnable									:		BOOL;
+	bManualAxisEnable							:		BOOL;
+	
+	fbTriggerStartButton						:		R_TRIG;
+	
+	nBoxesOnTransport							:		UINT;
+	
+	aClampTemps									:		ARRAY [1..100] OF LREAL;
+	aBarrierTemps								:		ARRAY [1..100] OF LREAL;
+	aMetalCylTemps								:		ARRAY [1..100] OF LREAL;
+	aPlasticCylTemps							:		ARRAY [1..100] OF LREAL;
+END_VAR
+VAR CONSTANT
+	// ======================= Axis parameters ===================================
+	nAxisVeloAutomatic							:		LREAL	:=		100.0;
+	nAxisVeloNonAutomatic						:		LREAL	:=		50.0;
+	// =============== Separating module parameters ===============================
+	tSeparatingTimeOutClamp						:		TIME	:=		T#4S;
+	tSeparatingRecordIntervalClamp				:		TIME	:=		T#1S;
+	
+	tSeparatingTimeOutBarrier					:		TIME	:=		T#3S;
+	tSeparatingRecordIntervalBarrier			:		TIME	:=		T#1S;
+	tSeparatingTimeBarrierAtWork				:		TIME	:=		T#3.5S;
+	// =============== Sorting module parameters ==================================
+	tSortingMetalTimeOutCyl						:		TIME	:=		T#3S;
+	tSortingMetalRecordIntervalCyl				:		TIME	:=		T#1S;
+	tSortingMetalSensorDelay					:		TIME	:=		T#2S;
+	tSortingMetalMoveAxisDelay					:		TIME	:=		T#3S;
+
+	tSortingPlasticTimeOutCyl					:		TIME	:=		T#3S;
+	tSortingPlasticRecordIntervalCyl			:		TIME	:=		T#1S;
+	tSortingPlasticSensorDelay					:		TIME	:=		T#2S;
+	tSortingPlasticMoveAxisDelay				:		TIME	:=		T#3S;
 END_VAR
 ]]></Declaration>
     <Implementation>

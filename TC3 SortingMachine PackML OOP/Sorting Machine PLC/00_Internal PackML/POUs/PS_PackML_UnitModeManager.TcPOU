@@ -1,0 +1,182 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<TcPlcObject Version="1.1.0.1" ProductVersion="3.1.4024.15">
+  <POU Name="PS_PackML_UnitModeManager" Id="{dc4f20d7-6b30-44fa-9729-9733db7a4e11}" SpecialFunc="None">
+    <Declaration><![CDATA[FUNCTION_BLOCK PS_PackML_UnitModeManager
+VAR_INPUT
+	bExecute						:				BOOL;
+	ePMLUnitModeCommand				:				E_PMLUnitMode;
+	ePMLState						:				E_PMLState;
+END_VAR
+VAR_OUTPUT
+	ePMLUnitModeStatus				:				E_PMLUnitMode;
+	bDone							:				BOOL;
+	bError							:				BOOL;
+	nErrorID						:				UDINT;
+END_VAR
+VAR
+	fbTriggerModeChange					:				R_TRIG;
+END_VAR
+]]></Declaration>
+    <Implementation>
+      <ST><![CDATA[
+	fbTriggerModeChange(CLK	:=	bExecute);
+
+	IF fbTriggerModeChange.Q THEN
+		bDone			:=		FALSE;
+		bError			:=		FALSE;
+		nErrorID		:=		0;
+		
+		CASE ePMLUnitModeStatus OF
+			
+			E_PMLUnitMode.UNDEFINED:
+					ePMLUnitModeStatus	:=	ePMLUnitModeCommand;
+					bDone				:=	TRUE;
+			
+			E_PMLUnitMode.AUTOMATIC:
+					IF (ePMLState = E_PMLState.ABORTED) OR (ePMLState = E_PMLState.STOPPED) OR (ePMLState = E_PMLState.IDLE) THEN
+						ePMLUnitModeStatus	:=	ePMLUnitModeCommand;
+						bDone				:=	TRUE;
+					ELSIF ((ePMLState = E_PMLState.HELD) OR (ePMLState = E_PMLState.SUSPENDED) OR (ePMLState = E_PMLState.COMPLETE))
+						AND (ePMLUnitModeCommand = E_PMLUnitMode.SEMIAUTOMATIC) THEN
+							ePMLUnitModeStatus	:=	ePMLUnitModeCommand;
+							bDone				:=	TRUE;
+					ELSIF (ePMLState = E_PMLState.HELD) AND (ePMLUnitModeCommand = E_PMLUnitMode.MAINTENANCE) THEN
+							ePMLUnitModeStatus	:=	ePMLUnitModeCommand;
+							bDone				:=	TRUE;
+					ELSE
+							bDone				:=	FALSE;
+							bError				:=	TRUE;
+							nErrorID			:=	1;
+					END_IF
+			E_PMLUnitMode.SEMIAUTOMATIC:
+					IF (ePMLState = E_PMLState.ABORTED) OR (ePMLState = E_PMLState.STOPPED) OR (ePMLState = E_PMLState.IDLE) THEN
+						ePMLUnitModeStatus	:=	ePMLUnitModeCommand;
+						bDone				:=	TRUE;
+					ELSIF ((ePMLState = E_PMLState.HELD) OR (ePMLState = E_PMLState.SUSPENDED) OR (ePMLState = E_PMLState.COMPLETE))
+						AND (ePMLUnitModeCommand = E_PMLUnitMode.AUTOMATIC) THEN
+							ePMLUnitModeStatus	:=	ePMLUnitModeCommand;
+							bDone				:=	TRUE;
+					ELSIF (ePMLState = E_PMLState.HELD) AND (ePMLUnitModeCommand = E_PMLUnitMode.MAINTENANCE) THEN
+							ePMLUnitModeStatus	:=	ePMLUnitModeCommand;
+							bDone				:=	TRUE;
+					ELSE
+							bDone				:=	FALSE;
+							bError				:=	TRUE;
+							nErrorID			:=	1;
+					END_IF
+			E_PMLUnitMode.MANUAL:
+					IF (ePMLState = E_PMLState.ABORTED) OR (ePMLState = E_PMLState.STOPPED) OR (ePMLState = E_PMLState.IDLE) THEN
+						ePMLUnitModeStatus	:=	ePMLUnitModeCommand;
+						bDone				:=	TRUE;
+					ELSE
+							bDone				:=	FALSE;
+							bError				:=	TRUE;
+							nErrorID			:=	1;
+					END_IF					
+			E_PMLUnitMode.MAINTENANCE:
+					IF (ePMLState = E_PMLState.ABORTED) OR (ePMLState = E_PMLState.STOPPED) OR (ePMLState = E_PMLState.IDLE) THEN
+						ePMLUnitModeStatus	:=	ePMLUnitModeCommand;
+						bDone				:=	TRUE;
+					ELSIF (ePMLState = E_PMLState.HELD) AND ((ePMLUnitModeCommand = E_PMLUnitMode.AUTOMATIC) OR (ePMLUnitModeCommand = E_PMLUnitMode.SEMIAUTOMATIC)) THEN
+							ePMLUnitModeStatus	:=	ePMLUnitModeCommand;
+							bDone				:=	TRUE;
+					ELSE
+							bDone				:=	FALSE;
+							bError				:=	TRUE;
+							nErrorID			:=	1;
+					END_IF					
+					
+			E_PMLUnitMode.DRYRUN:
+					ePMLUnitModeStatus	:=	ePMLUnitModeCommand;
+					bDone				:=	TRUE;
+					
+			E_PMLUnitMode.USERMODE1:
+					ePMLUnitModeStatus	:=	ePMLUnitModeCommand;
+					bDone				:=	TRUE;
+					
+			E_PMLUnitMode.USERMODE2:
+					ePMLUnitModeStatus	:=	ePMLUnitModeCommand;
+					bDone				:=	TRUE;
+					
+			E_PMLUnitMode.IDLE:
+					IF (ePMLState = E_PMLState.ABORTED) OR (ePMLState = E_PMLState.STOPPED) OR (ePMLState = E_PMLState.IDLE) THEN
+						ePMLUnitModeStatus	:=	ePMLUnitModeCommand;
+						bDone				:=	TRUE;
+					ELSE
+							bDone				:=	FALSE;
+							bError				:=	TRUE;
+							nErrorID			:=	1;
+					END_IF
+			E_PMLUnitMode.ESTOP:
+					IF (ePMLState = E_PMLState.ABORTED) OR (ePMLState = E_PMLState.STOPPED) OR (ePMLState = E_PMLState.IDLE) THEN
+						ePMLUnitModeStatus	:=	ePMLUnitModeCommand;
+						bDone				:=	TRUE;
+					ELSE
+							bDone				:=	FALSE;
+							bError				:=	TRUE;
+							nErrorID			:=	1;
+					END_IF
+		END_CASE
+	END_IF
+	]]></ST>
+    </Implementation>
+    <LineIds Name="PS_PackML_UnitModeManager">
+      <LineId Id="20" Count="0" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="19" Count="0" />
+      <LineId Id="18" Count="0" />
+      <LineId Id="21" Count="0" />
+      <LineId Id="23" Count="4" />
+      <LineId Id="30" Count="1" />
+      <LineId Id="29" Count="0" />
+      <LineId Id="33" Count="3" />
+      <LineId Id="38" Count="1" />
+      <LineId Id="45" Count="0" />
+      <LineId Id="41" Count="2" />
+      <LineId Id="47" Count="1" />
+      <LineId Id="37" Count="0" />
+      <LineId Id="50" Count="0" />
+      <LineId Id="52" Count="1" />
+      <LineId Id="49" Count="0" />
+      <LineId Id="54" Count="0" />
+      <LineId Id="56" Count="13" />
+      <LineId Id="55" Count="0" />
+      <LineId Id="70" Count="0" />
+      <LineId Id="93" Count="1" />
+      <LineId Id="71" Count="0" />
+      <LineId Id="95" Count="0" />
+      <LineId Id="97" Count="2" />
+      <LineId Id="96" Count="0" />
+      <LineId Id="72" Count="0" />
+      <LineId Id="100" Count="2" />
+      <LineId Id="107" Count="1" />
+      <LineId Id="103" Count="0" />
+      <LineId Id="109" Count="0" />
+      <LineId Id="104" Count="2" />
+      <LineId Id="74" Count="0" />
+      <LineId Id="87" Count="0" />
+      <LineId Id="75" Count="1" />
+      <LineId Id="114" Count="0" />
+      <LineId Id="88" Count="0" />
+      <LineId Id="77" Count="1" />
+      <LineId Id="115" Count="0" />
+      <LineId Id="89" Count="0" />
+      <LineId Id="79" Count="1" />
+      <LineId Id="116" Count="0" />
+      <LineId Id="90" Count="0" />
+      <LineId Id="81" Count="0" />
+      <LineId Id="110" Count="1" />
+      <LineId Id="82" Count="0" />
+      <LineId Id="117" Count="3" />
+      <LineId Id="91" Count="0" />
+      <LineId Id="83" Count="0" />
+      <LineId Id="112" Count="1" />
+      <LineId Id="73" Count="0" />
+      <LineId Id="121" Count="3" />
+      <LineId Id="92" Count="0" />
+      <LineId Id="28" Count="0" />
+      <LineId Id="85" Count="0" />
+      <LineId Id="22" Count="0" />
+    </LineIds>
+  </POU>
+</TcPlcObject>
