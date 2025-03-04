@@ -87,6 +87,7 @@ END_VAR
 				ePMLState				:=	E_PMLState.STOPPING;
 				ST_Stopping				:=	TRUE;				
 			END_IF
+		
 		E_PMLState.IDLE:
 			IF bStateChange	THEN
 				ST_Starting				:=	FALSE;
@@ -711,6 +712,7 @@ END_VAR
       <LineId Id="180" Count="1" />
       <LineId Id="176" Count="0" />
       <LineId Id="134" Count="0" />
+      <LineId Id="1085" Count="0" />
       <LineId Id="185" Count="23" />
       <LineId Id="214" Count="0" />
       <LineId Id="209" Count="1" />

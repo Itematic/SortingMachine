@@ -71,5 +71,30 @@
       <From>PS_PackML_StateMachine_Auto_1</From>
       <To>PS_PackML_StateMachine_Maintenance</To>
     </RenamedType>
+    <RenamedType>
+      <Type guid="06210250-0755-41fc-8866-aa6da8184b66">OPERATING_MANUAL_1</Type>
+      <From>Operating_Manual_1</From>
+      <To>Operating_Maintenance</To>
+    </RenamedType>
+    <RenamedSymbol>
+      <Type guid="78f5a34d-589b-4d90-87e2-81c612568f87">FB_SortingModule</Type>
+      <From>a_Temps</From>
+      <To>aCylTemps</To>
+    </RenamedSymbol>
+    <RenamedType>
+      <Type guid="55365572-5464-4324-b42a-b7f4ab586035">INIT</Type>
+      <From>Init</From>
+      <To>General_Init</To>
+    </RenamedType>
+    <RenamedType>
+      <Type guid="e0890453-aacc-478b-ba67-4b9c253d8077">MODULEINPUTS</Type>
+      <From>ModuleInputs</From>
+      <To>General_ModuleInputs</To>
+    </RenamedType>
+    <RenamedType>
+      <Type guid="149a393a-f524-48ce-8b52-2e7f8acc163e">ENABLE</Type>
+      <From>Enable</From>
+      <To>General_Enable</To>
+    </RenamedType>
   </Renames>
 </Refactors>

@@ -7,16 +7,17 @@ VAR_INPUT
 	bButtonCylMoveToBaseIn										:						BOOL;
 END_VAR
 VAR_OUTPUT
+	bSorted														:						BOOL;								// Part picked at sorting module
+	
 	bCylError													:						BOOL;
 	sCylErrorMsg												:						STRING;
 	
-	a_Temps														:						ARRAY [1..100] OF LREAL;
+	aCylTemps													:						ARRAY [1..100] OF LREAL;
 	
 	bButtonCylMoveToWorkOut										:						BOOL;
 	bButtonCylMoveToBaseOut										:						BOOL;
 END_VAR
 VAR
-	bSorted														:						BOOL;								// Part picked at sorting module
 	// Sensor with delay functionality
 	fbSensorDelay												:						FB_SignalHandlingDelay;
 	
@@ -175,7 +176,7 @@ END_VAR
 				
 				fbCylinderTempRec.Record();
 				
-				a_Temps								:=			fbCylinderTempRec.aRecords;
+				aCylTemps							:=			fbCylinderTempRec.aRecords;
 				
 					itfCylinder	:= fbCylinderTempRec;
 			

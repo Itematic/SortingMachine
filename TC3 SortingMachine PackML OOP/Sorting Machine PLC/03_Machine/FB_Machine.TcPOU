@@ -72,6 +72,9 @@ VAR
 	bManualAxisEnable							:		BOOL;
 	
 	fbTriggerStartButton						:		R_TRIG;
+	fbTriggerSeparated							:		R_TRIG;
+	fbTriggerMetalSorted						:		R_TRIG;
+	fbTriggerPlasticSorted						:		R_TRIG;
 	
 	nBoxesOnTransport							:		UINT;
 	
@@ -79,11 +82,15 @@ VAR
 	aBarrierTemps								:		ARRAY [1..100] OF LREAL;
 	aMetalCylTemps								:		ARRAY [1..100] OF LREAL;
 	aPlasticCylTemps							:		ARRAY [1..100] OF LREAL;
+	
+	bStartingIsSetToTrue						:		BOOL;
+	bResetIsSetToTrue							:		BOOL;
+	bHaltIsSetToTrue							:		BOOL;
 END_VAR
 VAR CONSTANT
 	// ======================= Axis parameters ===================================
-	nAxisVeloAutomatic							:		LREAL	:=		100.0;
-	nAxisVeloNonAutomatic						:		LREAL	:=		50.0;
+	cAxisVeloAutomatic							:		LREAL	:=		100.0;
+	cAxisVeloNonAutomatic						:		LREAL	:=		50.0;
 	// =============== Separating module parameters ===============================
 	tSeparatingTimeOutClamp						:		TIME	:=		T#4S;
 	tSeparatingRecordIntervalClamp				:		TIME	:=		T#1S;
@@ -115,10 +122,60 @@ VAR CONSTANT
 END_VAR
 ]]></Declaration>
     <Implementation>
-      <ST><![CDATA[]]></ST>
+      <ST><![CDATA[
+	// Modules errors
+	bError	:=	fbSeparatingModule.bAxisError OR fbSeparatingModule.bBarrierError OR fbSeparatingModule.bClampError OR
+				fbMetalSortingModule.bAxisError OR fbMetalSortingModule.bCylError OR
+				fbPlasticSortingModule.bAxisError OR fbPlasticSortingModule.bCylError;
+				
+	// Axis velocity
+	IF (e_PMLUnitMode = E_PMLUnitMode.AUTOMATIC OR e_PMLUnitMode = E_PMLUnitMode.SEMIAUTOMATIC) THEN
+		fAxisVelo		:=		cAxisVeloAutomatic;
+	ELSE
+		fAxisVelo		:=		cAxisVeloNonAutomatic;	
+	END_IF
+ 
+	// Separeted and sorted boxes output transfer
+	fbTriggerSeparated(		CLK		:=		fbSeparatingModule.bSeparated);
+	fbTriggerMetalSorted(	CLK		:=		fbMetalSortingModule.bSorted);
+	fbTriggerPlasticSorted(	CLK		:=		fbPlasticSortingModule.bSorted);
+	
+	// Temperatures of modules
+	aBarrierTemps					:=		fbSeparatingModule.aBarrierTemp;
+	aClampTemps						:=		fbSeparatingModule.aClampTemp;
+	aMetalCylTemps					:=		fbMetalSortingModule.aCylTemps;
+	aPlasticCylTemps				:=		fbPlasticSortingModule.aCylTemps;
+	
+	// Cylinder options of modules
+	fbSeparatingModule.CylinderOptions(		bClampDiag			:=				bSeparatingClampDiag,
+											bClampTemp			:=				bSeparatingClampTemp,
+											bClampRecord		:=				bSeparatingClampRecord,
+											bBarrierDiag		:=				bSeparatingBarrierDiag,
+											bBarrierTemp		:=				bSeparatingBarrierTemp,
+											bBarrierRecord		:=				bSeparatingBarrierRecord);
+											
+	fbMetalSortingModule.CylinderOptions(	bCylDiag			:=				bMetalSortingCylinderDiag,
+											bCylTemp			:=				bMetalSortingCylinderTemp,
+											bCylRecord			:=				bMetalSortingCylinderRecord);
+											
+	fbPlasticSortingModule.CylinderOptions(	bCylDiag			:=				bPlasticSortingCylinderDiag,
+											bCylTemp			:=				bPlasticSortingCylinderTemp,
+											bCylRecord			:=				bPlasticSortingCylinderRecord);
+											
+	General_Init();
+	
+	General_Enable();
+	
+	General_ModuleInputs();
+	
+	General_SetOutputs();
+	
+	General_Requests();
+	
+	General_StateMachine();]]></ST>
     </Implementation>
-    <Method Name="Enable" Id="{149a393a-f524-48ce-8b52-2e7f8acc163e}">
-      <Declaration><![CDATA[METHOD PRIVATE Enable
+    <Method Name="General_Enable" Id="{149a393a-f524-48ce-8b52-2e7f8acc163e}">
+      <Declaration><![CDATA[METHOD PRIVATE General_Enable
 VAR_INPUT
 END_VAR
 ]]></Declaration>
@@ -188,6 +245,88 @@ END_VAR
 	fbButtonMaintenance.Enable	(	bEnable					:=			((e_PMLState = E_PMLState.IDLE) AND (e_PMLUnitMode <> E_PMLUnitMode.MAINTENANCE)));]]></ST>
       </Implementation>
     </Method>
+    <Method Name="General_Init" Id="{55365572-5464-4324-b42a-b7f4ab586035}">
+      <Declaration><![CDATA[METHOD PRIVATE General_Init
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+	IF NOT bInit THEN
+	// ================================ Separating module parameters ==========================================
+		// Clamp cylinder
+		fbSeparatingModule.tProp_TimeIntervalClamp				:=		tSeparatingRecordIntervalClamp;
+		fbSeparatingModule.tProp_TimeOutClamp					:=		tSeparatingTimeOutClamp;
+		
+		fbSeparatingModule.nProp_TempMaxClamp					:=		rSeparatingClampTempMax;
+		fbSeparatingModule.nProp_TempMinClamp					:=		rSeparatingClampTempMin;
+				
+		// Barrier cylinder
+		fbSeparatingModule.tProp_TimeIntervalBarrier			:=		tSeparatingRecordIntervalBarrier;
+		fbSeparatingModule.tProp_TimeOutBarrier					:=		tSeparatingTimeOutBarrier;
+		
+		fbSeparatingModule.tBarrierAtWorkPos					:=		tSeparatingTimeBarrierAtWork;
+		
+		fbSeparatingModule.nProp_TempMaxBarrier					:=		rSeparatingBarrierTempMax;
+		fbSeparatingModule.nProp_TempMinBarrier					:=		rSeparatingBarrierTempMin;
+	
+
+	// ============================== Sorting metal module parameters ==========================================
+		fbMetalSortingModule.tProp_AxisMoving					:=		tSortingMetalMoveAxisDelay;
+		fbMetalSortingModule.tProp_CylRecInterval				:=		tSortingMetalRecordIntervalCyl;
+		fbMetalSortingModule.tProp_CylTimeOut					:=		tSortingMetalTimeOutCyl;
+		fbMetalSortingModule.tProp_SensorDelay					:=		tSortingMetalSensorDelay;
+		
+		fbMetalSortingModule.nProp_CylTempMax					:=		rSortingMetalCylTempMax;
+		fbMetalSortingModule.nProp_CylTempMin					:=		rSortingMetalCylTempMin;
+			
+	// ============================== Sorting plastic module parameters ==========================================
+		fbPlasticSortingModule.tProp_AxisMoving					:=		tSortingPlasticMoveAxisDelay;
+		fbPlasticSortingModule.tProp_CylRecInterval				:=		tSortingPlasticRecordIntervalCyl;
+		fbPlasticSortingModule.tProp_CylTimeOut					:=		tSortingPlasticTimeOutCyl;
+		fbPlasticSortingModule.tProp_SensorDelay				:=		tSortingPlasticSensorDelay;
+		
+		fbPlasticSortingModule.nProp_CylTempMax					:=		rSortingPlasticCylTempMax;
+		fbPlasticSortingModule.nProp_CylTempMin					:=		rSortingPlasticCylTempMin;
+		
+		bInit			:=		TRUE;
+	END_IF]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="General_ModuleInputs" Id="{e0890453-aacc-478b-ba67-4b9c253d8077}">
+      <Declaration><![CDATA[METHOD PRIVATE General_ModuleInputs
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+	// Separating module
+		fbSeparatingModule.bExecute								:=		(e_PMLState :=	E_PMLState.EXECUTE);
+		
+		// Axis velocity has changed
+		IF (fAxisVeloLastCycle <> fAxisVelo) THEN
+			fbSeparatingModule.fAxisVelocity					:=		fAxisVelo;
+		END_IF
+	
+			fbSeparatingModule.nBoxOnConveyor					:=		nBoxesOnTransport;
+	// Sorting module plastic
+		// Axis velocity has changed
+		IF (fAxisVeloLastCycle <> fAxisVelo) THEN
+			fbPlasticSortingModule.fAxisVelocity				:=		fAxisVelo;
+		END_IF
+	
+	// Sorting module metal
+		// Axis velocity has changed
+		IF (fAxisVeloLastCycle <> fAxisVelo) THEN
+			fbMetalSortingModule.fAxisVelocity				:=		fAxisVelo;
+		END_IF
+	
+		// Save axis velocity of actual cycle for the next cycle
+		fAxisVeloLastCycle			:=			fAxisVelo;
+		
+		]]></ST>
+      </Implementation>
+    </Method>
     <Method Name="General_Requests" Id="{8a9880e1-4cd2-48c8-a695-7a2a0f457a01}">
       <Declaration><![CDATA[METHOD PRIVATE General_Requests
 VAR_INPUT
@@ -201,15 +340,18 @@ END_VAR
 	IF fbTriggerStartButton.Q THEN
 		IF e_PMLState = E_PMLState.ABORTED THEN
 			e_PMLStateRequest	:=	E_PMLState.CLEARING;
+			
 		ELSIF e_PMLState 	= E_PMLState.STOPPED THEN
-			e_PMLState	:=	E_PMLState.RESETTING;
+			e_PMLStateRequest	:=	E_PMLState.RESETTING;
+			
 		ELSIF e_PMLState	=	E_PMLState.IDLE AND fbPowerSupply.bOutputSignal THEN
-			e_PMLState	:=	E_PMLState.STARTING;
+			e_PMLStateRequest	:=	E_PMLState.STARTING;
 		END_IF
 	ELSIF  fbButtonStop THEN
-		e_PMLState	:=	E_PMLState.STOPPING;
+		e_PMLStateRequest	:=	E_PMLState.STOPPING;
+	
 	ELSIF	fbButtonReset THEN
-		e_PMLState	:=	E_PMLState.RESETTING;
+		e_PMLStateRequest	:=	E_PMLState.RESETTING;
 	END_IF
 	
 	// Mode requests
@@ -284,92 +426,581 @@ END_VAR
 		fbButtonMaintenance.SetOutput();]]></ST>
       </Implementation>
     </Method>
-    <Method Name="Init" Id="{55365572-5464-4324-b42a-b7f4ab586035}">
-      <Declaration><![CDATA[METHOD PRIVATE Init
+    <Method Name="General_StateMachine" Id="{c0e031ad-ac3a-46a2-9330-e9ec0efefc5c}">
+      <Declaration><![CDATA[METHOD PRIVATE General_StateMachine
 VAR_INPUT
 END_VAR
 ]]></Declaration>
       <Implementation>
         <ST><![CDATA[
-	IF NOT bInit THEN
-	// ================================ Separating module parameters ==========================================
-		// Clamp cylinder
-		fbSeparatingModule.tProp_TimeIntervalClamp				:=		tSeparatingRecordIntervalClamp;
-		fbSeparatingModule.tProp_TimeOutClamp					:=		tSeparatingTimeOutClamp;
+	// Mode and State Handling
+	CASE e_PMLUnitMode OF
+		E_PMLUnitMode.AUTOMATIC:
+			fbStateMachineAuto(			Start		:=			e_PMLStateRequest = E_PMLState.STARTING,
+										Stop		:=			fbButtonStop.bOutputSignal,
+										Reset		:=			e_PMLStateRequest = E_PMLState.RESETTING OR fbButtonReset.bOutputSignal,
+										Clear		:=			e_PMLStateRequest = E_PMLState.CLEARING,
+										Abort		:=			e_PMLStateRequest = E_PMLState.ABORTING OR (bError AND e_PMLStateRequest = E_PMLState.EXECUTE));
+								
+					e_PMLState		:=			fbStateMachineAuto.ePMLState;
+					
+					// State internal commands handling + StateComplete signal for switching PackML_StateMachine
+					Operating_Automatic();
+					
+		E_PMLUnitMode.SEMIAUTOMATIC:
+			fbStateMachineSemiAuto(		Start		:=			e_PMLStateRequest = E_PMLState.STARTING,
+										Stop		:=			fbButtonStop.bOutputSignal,
+										Reset		:=			e_PMLStateRequest = E_PMLState.RESETTING OR fbButtonReset.bOutputSignal,
+										Clear		:=			e_PMLStateRequest = E_PMLState.CLEARING,
+										Abort		:=			e_PMLStateRequest = E_PMLState.ABORTING OR (bError AND e_PMLStateRequest = E_PMLState.EXECUTE));
+								
+					e_PMLState		:=			fbStateMachineSemiAuto.ePMLState;
 		
-		fbSeparatingModule.nProp_TempMaxClamp					:=		rSeparatingClampTempMax;
-		fbSeparatingModule.nProp_TempMinClamp					:=		rSeparatingClampTempMin;
-				
-		// Barrier cylinder
-		fbSeparatingModule.tProp_TimeIntervalBarrier			:=		tSeparatingRecordIntervalBarrier;
-		fbSeparatingModule.tProp_TimeOutBarrier					:=		tSeparatingTimeOutBarrier;
-		
-		fbSeparatingModule.tBarrierAtWorkPos					:=		tSeparatingTimeBarrierAtWork;
-		
-		fbSeparatingModule.nProp_TempMaxBarrier					:=		rSeparatingBarrierTempMax;
-		fbSeparatingModule.nProp_TempMinBarrier					:=		rSeparatingBarrierTempMin;
-	
+					// State internal commands handling + StateComplete signal for switching PackML_StateMachine
+					Operating_SemiAutomatic();
+					
+		E_PMLUnitMode.MANUAL:
+			fbStateMachineManual(		Start		:=			e_PMLStateRequest = E_PMLState.STARTING,
+										Stop		:=			fbButtonStop.bOutputSignal,
+										Reset		:=			e_PMLStateRequest = E_PMLState.RESETTING OR fbButtonReset.bOutputSignal,
+										Clear		:=			e_PMLStateRequest = E_PMLState.CLEARING,
+										Abort		:=			e_PMLStateRequest = E_PMLState.ABORTING OR (bError AND e_PMLStateRequest = E_PMLState.EXECUTE));
+								
+					e_PMLState		:=			fbStateMachineManual.ePMLState;
 
-	// ============================== Sorting metal module parameters ==========================================
-		fbMetalSortingModule.tProp_AxisMoving					:=		tSortingMetalMoveAxisDelay;
-		fbMetalSortingModule.tProp_CylRecInterval				:=		tSortingMetalRecordIntervalCyl;
-		fbMetalSortingModule.tProp_CylTimeOut					:=		tSortingMetalTimeOutCyl;
-		fbMetalSortingModule.tProp_SensorDelay					:=		tSortingMetalSensorDelay;
-		
-		fbMetalSortingModule.nProp_CylTempMax					:=		rSortingMetalCylTempMax;
-		fbMetalSortingModule.nProp_CylTempMin					:=		rSortingMetalCylTempMin;
-			
-	// ============================== Sorting plastic module parameters ==========================================
-		fbPlasticSortingModule.tProp_AxisMoving					:=		tSortingPlasticMoveAxisDelay;
-		fbPlasticSortingModule.tProp_CylRecInterval				:=		tSortingPlasticRecordIntervalCyl;
-		fbPlasticSortingModule.tProp_CylTimeOut					:=		tSortingPlasticTimeOutCyl;
-		fbPlasticSortingModule.tProp_SensorDelay				:=		tSortingPlasticSensorDelay;
-		
-		fbPlasticSortingModule.nProp_CylTempMax					:=		rSortingPlasticCylTempMax;
-		fbPlasticSortingModule.nProp_CylTempMin					:=		rSortingPlasticCylTempMin;
-		
-		bInit			:=		TRUE;
-	END_IF]]></ST>
+					// State internal commands handling + StateComplete signal for switching PackML_StateMachine
+					Operating_Manual();
+					
+		E_PMLUnitMode.MAINTENANCE:
+			fbStateMachineMaintenance(	Start		:=			e_PMLStateRequest = E_PMLState.STARTING,
+										Stop		:=			fbButtonStop.bOutputSignal,
+										Reset		:=			e_PMLStateRequest = E_PMLState.RESETTING OR fbButtonReset.bOutputSignal,
+										Clear		:=			e_PMLStateRequest = E_PMLState.CLEARING,
+										Abort		:=			e_PMLStateRequest = E_PMLState.ABORTING OR (bError AND e_PMLStateRequest = E_PMLState.EXECUTE));
+								
+					e_PMLState		:=			fbStateMachineMaintenance.ePMLState;
+					
+					// State internal commands handling + StateComplete signal for switching PackML_StateMachine
+					Operating_Maintenance();		
+	END_CASE]]></ST>
       </Implementation>
     </Method>
-    <Method Name="ModuleInputs" Id="{e0890453-aacc-478b-ba67-4b9c253d8077}">
-      <Declaration><![CDATA[METHOD PRIVATE ModuleInputs
+    <Method Name="Operating_Automatic" Id="{2aaebcd9-7bb6-42a0-9ada-aa72bc56fc0d}">
+      <Declaration><![CDATA[METHOD PRIVATE Operating_Automatic
 VAR_INPUT
 END_VAR
 ]]></Declaration>
       <Implementation>
         <ST><![CDATA[
-	// Separating module
-		fbSeparatingModule.bExecute								:=		(e_PMLState :=	E_PMLState.EXECUTE);
+	CASE e_PMLState OF
 		
-		// Axis velocity has changed
-		IF (fAxisVeloLastCycle <> fAxisVelo) THEN
-			fbSeparatingModule.fAxisVelocity					:=		fAxisVelo;
-		END_IF
-	
-			fbSeparatingModule.nBoxOnConveyor					:=		nBoxesOnTransport;
-	// Sorting module plastic
-		// Axis velocity has changed
-		IF (fAxisVeloLastCycle <> fAxisVelo) THEN
-			fbPlasticSortingModule.fAxisVelocity				:=		fAxisVelo;
-		END_IF
-	
-	// Sorting module metal
-		// Axis velocity has changed
-		IF (fAxisVeloLastCycle <> fAxisVelo) THEN
-			fbMetalSortingModule.fAxisVelocity				:=		fAxisVelo;
-		END_IF
-	
-		// Save axis velocity of actual cycle for the next cycle
-		fAxisVeloLastCycle			:=			fAxisVelo;
+		E_PMLState.IDLE:
+			IF bResetIsSetToTrue THEN
+				bResetIsSetToTrue		:=	FALSE;
+				fbSeparatingModule.Reset(		bReset		:=	FALSE);
+				fbMetalSortingModule.Reset(		bReset		:=	FALSE);
+				fbPlasticSortingModule.Reset(	bReset		:=	FALSE);
+
+				THIS^.fbStateMachineAuto.StateComplete		:=	FALSE;	
+			END_IF
+			
+		E_PMLState.STARTING:
+			IF NOT bStartingIsSetToTrue THEN
+				bStartingIsSetToTrue	:=	TRUE;
+				fbSeparatingModule.Starting(	bStarting	:=	TRUE);
+				fbMetalSortingModule.Starting(	bStarting	:=	TRUE);
+				fbPlasticSortingModule.Starting(bStarting	:=	TRUE);
+			END_IF	
+			
+			IF fbSeparatingModule.bState_StartingDone AND fbMetalSortingModule.bState_StartingDone AND fbPlasticSortingModule.bState_StartingDone THEN
+					THIS^.fbStateMachineAuto.StateComplete		:=	TRUE;
+			END_IF
+			
+		E_PMLState.EXECUTE:
+			IF bStartingIsSetToTrue THEN
+				bStartingIsSetToTrue	:=	FALSE;
+				fbSeparatingModule.Starting(	bStarting	:=	FALSE);
+				fbMetalSortingModule.Starting(	bStarting	:=	FALSE);
+				fbPlasticSortingModule.Starting(bStarting	:=	FALSE);
+				
+				THIS^.fbStateMachineAuto.StateComplete		:=	FALSE;
+			END_IF
+ 			
+				fbSeparatingModule.Automatic();
+				fbMetalSortingModule.Automatic();
+				fbPlasticSortingModule.Automatic();
+				
+				IF fbTriggerSeparated.Q THEN
+					nBoxesOnTransport	:=	nBoxesOnTransport + 1;
+				END_IF
+				
+				IF fbTriggerMetalSorted.Q THEN
+					nBoxesOnTransport	:=	nBoxesOnTransport - 1;
+				END_IF
+				
+				IF fbTriggerPlasticSorted.Q THEN
+					nBoxesOnTransport	:=	nBoxesOnTransport - 1;
+				END_IF
+
+		E_PMLState.ABORTING:
+				IF NOT bHaltIsSetToTrue THEN
+					bHaltIsSetToTrue	:=	TRUE;
+					fbSeparatingModule.Stop(		bStop		:=	TRUE);
+					fbMetalSortingModule.Stop(		bStop		:=	TRUE);
+					fbPlasticSortingModule.Stop(	bStop		:=	TRUE);
+				END_IF
+				
+				IF fbSeparatingModule.bState_HaltDone AND fbMetalSortingModule.bState_HaltDone AND fbPlasticSortingModule.bState_HaltDone THEN
+					THIS^.fbStateMachineAuto.StateComplete		:=	TRUE;
+				END_IF
+			
+		E_PMLState.ABORTED:
+				IF bHaltIsSetToTrue THEN
+					bHaltIsSetToTrue	:=	FALSE;
+					fbSeparatingModule.Stop(		bStop		:=	FALSE);
+					fbMetalSortingModule.Stop(		bStop		:=	FALSE);
+					fbPlasticSortingModule.Stop(	bStop		:=	FALSE);
+				END_IF
+				
+				IF THIS^.fbStateMachineAuto.StateComplete THEN
+					THIS^.fbStateMachineAuto.StateComplete		:=	FALSE;
+				END_IF
+				
+		E_PMLState.CLEARING:
+				THIS^.fbStateMachineAuto.StateComplete		:=	TRUE;
+				
+		E_PMLState.STOPPING:
+				IF fbTriggerSeparated.Q THEN
+					nBoxesOnTransport	:=	nBoxesOnTransport	+	1;
+				END_IF
+
+				IF fbTriggerMetalSorted.Q THEN
+					nBoxesOnTransport	:=	nBoxesOnTransport	-	1;
+				END_IF
+
+				IF fbTriggerPlasticSorted.Q THEN
+					nBoxesOnTransport	:=	nBoxesOnTransport	-	1;
+				END_IF
+
+				IF nBoxesOnTransport = 0 AND NOT bHaltIsSetToTrue THEN
+					bHaltIsSetToTrue	:=	TRUE;
+					fbSeparatingModule.Stop(	bStop		:=		TRUE);
+					fbMetalSortingModule.Stop(	bStop		:=		TRUE);
+					fbPlasticSortingModule.Stop(bStop		:=		TRUE);
+				END_IF
+				
+				IF fbSeparatingModule.bState_HaltDone AND fbMetalSortingModule.bState_HaltDone AND fbPlasticSortingModule.bState_HaltDone AND nBoxesOnTransport = 0 THEN
+					THIS^.fbStateMachineAuto.StateComplete	:=	TRUE;
+				END_IF
+							
+		E_PMLState.STOPPED:
+				IF bHaltIsSetToTrue THEN
+					bHaltIsSetToTrue	:=	FALSE;
+					fbSeparatingModule.Stop(	bStop		:=		FALSE);
+					fbMetalSortingModule.Stop(	bStop		:=		FALSE);
+					fbPlasticSortingModule.Stop(bStop		:=		FALSE);
+				END_IF
+				
+				IF THIS^.fbStateMachineAuto.StateComplete THEN
+					THIS^.fbStateMachineAuto.StateComplete	:=		FALSE;
+				END_IF
+								
+		E_PMLState.RESETTING:
+				IF NOT bResetIsSetToTrue THEN
+					bResetIsSetToTrue 	:=	TRUE;
+					
+					fbSeparatingModule.Reset(	bReset		:=		TRUE);
+					fbMetalSortingModule.Reset(	bReset		:=		TRUE);
+					fbPlasticSortingModule.Reset(bReset 	:=		TRUE);
+				END_IF
+				
+				IF fbSeparatingModule.bState_ResetDone AND fbMetalSortingModule.bState_ResetDone AND fbPlasticSortingModule.bState_ResetDone AND
+					fbSeparatingModule.bState_BarrierAtBasePos AND fbSeparatingModule.bState_ClampAtBasePos AND fbMetalSortingModule.bState_CylAtBasePos AND fbPlasticSortingModule.bState_CylAtBasePos THEN
+					nBoxesOnTransport					:=	0;
+					fbStateMachineAuto.StateComplete	:=	TRUE;
+				END_IF
+	END_CASE]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Operating_Maintenance" Id="{06210250-0755-41fc-8866-aa6da8184b66}">
+      <Declaration><![CDATA[METHOD PRIVATE Operating_Maintenance
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+	CASE e_PMLState OF
 		
-		]]></ST>
+		E_PMLState.IDLE:
+			IF bResetIsSetToTrue THEN
+				bResetIsSetToTrue		:=		FALSE;
+				fbSeparatingModule.Reset(		bReset			:=		FALSE);
+				fbMetalSortingModule.Reset(		bReset			:=		FALSE);
+				fbPlasticSortingModule.Reset(	bReset			:=		FALSE);
+			
+				THIS^.fbStateMachineMaintenance.StateComplete		:=		FALSE;
+			END_IF
+		
+		E_PMLState.STARTING:
+			IF NOT bStartingIsSetToTrue THEN
+				bStartingIsSetToTrue	:=		TRUE;
+				fbSeparatingModule.Starting(	bStarting		:=		TRUE);
+				fbMetalSortingModule.Starting(	bStarting		:=		TRUE);
+				fbPlasticSortingModule.Starting(bStarting		:=		TRUE);
+			END_IF
+			
+			IF fbSeparatingModule.bState_StartingDone AND fbMetalSortingModule.bState_StartingDone AND fbPlasticSortingModule.bState_StartingDone THEN
+				THIS^.fbStateMachineMaintenance.StateComplete		:=		TRUE;
+			END_IF		
+		
+		E_PMLState.EXECUTE:
+			IF bStartingIsSetToTrue	THEN
+				bStartingIsSetToTrue	:=	FALSE;
+				fbSeparatingModule.Starting(	bStarting		:=		FALSE);
+				fbMetalSortingModule.Starting(	bStarting		:=		FALSE);
+				fbPlasticSortingModule.Starting(bStarting		:=		FALSE);
+				
+				THIS^.fbStateMachineMaintenance.StateComplete		:=		FALSE;
+			END_IF
+				
+				fbSeparatingModule.Maintain();
+				fbMetalSortingModule.Maintenance();
+				fbPlasticSortingModule.Maintenance();
+				
+		E_PMLState.ABORTING:
+			IF NOT bHaltIsSetToTrue THEN
+				bHaltIsSetToTrue		:=	TRUE;
+				fbSeparatingModule.Stop(		bStop 			:= 		TRUE);
+				fbMetalSortingModule.Stop(		bStop 			:= 		TRUE);
+				fbPlasticSortingModule.Stop(	bStop 			:=		TRUE);
+			END_IF
+			
+			IF fbSeparatingModule.bState_HaltDone AND fbMetalSortingModule.bState_HaltDone AND fbPlasticSortingModule.bState_HaltDone THEN
+				THIS^.fbStateMachineMaintenance.StateComplete		:=		TRUE;
+			END_IF
+		
+		E_PMLState.ABORTED:
+			IF bHaltIsSetToTrue	THEN
+				bHaltIsSetToTrue		:=	FALSE;
+				fbSeparatingModule.Stop(		bStop 			:= 		FALSE);
+				fbMetalSortingModule.Stop(		bStop 			:= 		FALSE);
+				fbPlasticSortingModule.Stop(	bStop 			:=		FALSE);
+			END_IF
+			
+			IF THIS^.fbStateMachineMaintenance.StateComplete THEN
+				THIS^.fbStateMachineMaintenance.StateComplete		:=		FALSE;
+			END_IF
+			
+		E_PMLState.CLEARING:
+			
+			THIS^.fbStateMachineMaintenance.StateComplete			:=		TRUE;
+		
+		E_PMLState.STOPPING:
+			IF NOT bHaltIsSetToTrue THEN
+				bHaltIsSetToTrue		:=	TRUE;
+				fbSeparatingModule.Stop(		bStop 			:= 		TRUE);
+				fbMetalSortingModule.Stop(		bStop 			:= 		TRUE);
+				fbPlasticSortingModule.Stop(	bStop 			:=		TRUE);
+			END_IF
+			
+			IF fbSeparatingModule.bState_HaltDone AND fbMetalSortingModule.bState_HaltDone AND fbPlasticSortingModule.bState_HaltDone THEN
+				THIS^.fbStateMachineMaintenance.StateComplete		:=		TRUE;
+			END_IF
+		
+		E_PMLState.STOPPED:
+			IF bHaltIsSetToTrue	THEN
+				bHaltIsSetToTrue		:=	FALSE;
+				fbSeparatingModule.Stop(		bStop 			:= 		FALSE);
+				fbMetalSortingModule.Stop(		bStop 			:= 		FALSE);
+				fbPlasticSortingModule.Stop(	bStop 			:=		FALSE);
+			END_IF
+			
+			IF THIS^.fbStateMachineMaintenance.StateComplete THEN
+				THIS^.fbStateMachineMaintenance.StateComplete		:=		FALSE;
+			END_IF
+			
+		E_PMLState.RESETTING:
+		
+			IF NOT bResetIsSetToTrue THEN
+				bResetIsSetToTrue		:=	TRUE;
+				fbSeparatingModule.Reset(	bReset		:=		TRUE);
+				fbMetalSortingModule.Reset(	bReset		:=		TRUE);
+				fbPlasticSortingModule.Reset(bReset 	:=		TRUE);
+			END_IF
+				
+			IF fbSeparatingModule.bState_ResetDone AND fbMetalSortingModule.bState_ResetDone AND fbPlasticSortingModule.bState_ResetDone AND
+				fbSeparatingModule.bState_BarrierAtBasePos AND fbSeparatingModule.bState_ClampAtBasePos AND fbMetalSortingModule.bState_CylAtBasePos AND fbPlasticSortingModule.bState_CylAtBasePos THEN
+					nBoxesOnTransport					:=	0;
+					fbStateMachineMaintenance.StateComplete	:=	TRUE;
+			END_IF
+	END_CASE]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Operating_Manual" Id="{eedf66c5-5d95-4d77-9169-88b2176b3cb4}">
+      <Declaration><![CDATA[METHOD PRIVATE Operating_Manual
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+	CASE e_PMLState OF
+		
+		E_PMLState.IDLE:
+			IF bResetIsSetToTrue THEN
+				bResetIsSetToTrue		:=		FALSE;
+				fbSeparatingModule.Reset(		bReset			:=		FALSE);
+				fbMetalSortingModule.Reset(		bReset			:=		FALSE);
+				fbPlasticSortingModule.Reset(	bReset			:=		FALSE);
+			
+				THIS^.fbStateMachineManual.StateComplete		:=		FALSE;
+			END_IF
+		
+		E_PMLState.STARTING:
+			IF NOT bStartingIsSetToTrue THEN
+				bStartingIsSetToTrue	:=		TRUE;
+				fbSeparatingModule.Starting(	bStarting		:=		TRUE);
+				fbMetalSortingModule.Starting(	bStarting		:=		TRUE);
+				fbPlasticSortingModule.Starting(bStarting		:=		TRUE);
+			END_IF
+			
+			IF fbSeparatingModule.bState_StartingDone AND fbMetalSortingModule.bState_StartingDone AND fbPlasticSortingModule.bState_StartingDone THEN
+				THIS^.fbStateMachineManual.StateComplete		:=		TRUE;
+			END_IF		
+		
+		E_PMLState.EXECUTE:
+			IF bStartingIsSetToTrue	THEN
+				bStartingIsSetToTrue	:=	FALSE;
+				fbSeparatingModule.Starting(	bStarting		:=		FALSE);
+				fbMetalSortingModule.Starting(	bStarting		:=		FALSE);
+				fbPlasticSortingModule.Starting(bStarting		:=		FALSE);
+				
+				THIS^.fbStateMachineManual.StateComplete		:=		FALSE;
+			END_IF
+				
+				fbSeparatingModule.Manual();
+				fbMetalSortingModule.Manual();
+				fbPlasticSortingModule.Manual();
+				
+		E_PMLState.ABORTING:
+			IF NOT bHaltIsSetToTrue THEN
+				bHaltIsSetToTrue		:=	TRUE;
+				fbSeparatingModule.Stop(		bStop 			:= 		TRUE);
+				fbMetalSortingModule.Stop(		bStop 			:= 		TRUE);
+				fbPlasticSortingModule.Stop(	bStop 			:=		TRUE);
+			END_IF
+			
+			IF fbSeparatingModule.bState_HaltDone AND fbMetalSortingModule.bState_HaltDone AND fbPlasticSortingModule.bState_HaltDone THEN
+				THIS^.fbStateMachineManual.StateComplete		:=		TRUE;
+			END_IF
+		
+		E_PMLState.ABORTED:
+			IF bHaltIsSetToTrue	THEN
+				bHaltIsSetToTrue		:=	FALSE;
+				fbSeparatingModule.Stop(		bStop 			:= 		FALSE);
+				fbMetalSortingModule.Stop(		bStop 			:= 		FALSE);
+				fbPlasticSortingModule.Stop(	bStop 			:=		FALSE);
+			END_IF
+			
+			IF THIS^.fbStateMachineManual.StateComplete THEN
+				THIS^.fbStateMachineManual.StateComplete		:=		FALSE;
+			END_IF
+			
+		E_PMLState.CLEARING:
+			
+			THIS^.fbStateMachineManual.StateComplete			:=		TRUE;
+		
+		E_PMLState.STOPPING:
+			IF NOT bHaltIsSetToTrue THEN
+				bHaltIsSetToTrue		:=	TRUE;
+				fbSeparatingModule.Stop(		bStop 			:= 		TRUE);
+				fbMetalSortingModule.Stop(		bStop 			:= 		TRUE);
+				fbPlasticSortingModule.Stop(	bStop 			:=		TRUE);
+			END_IF
+			
+			IF fbSeparatingModule.bState_HaltDone AND fbMetalSortingModule.bState_HaltDone AND fbPlasticSortingModule.bState_HaltDone THEN
+				THIS^.fbStateMachineManual.StateComplete		:=		TRUE;
+			END_IF
+		
+		E_PMLState.STOPPED:
+			IF bHaltIsSetToTrue	THEN
+				bHaltIsSetToTrue		:=	FALSE;
+				fbSeparatingModule.Stop(		bStop 			:= 		FALSE);
+				fbMetalSortingModule.Stop(		bStop 			:= 		FALSE);
+				fbPlasticSortingModule.Stop(	bStop 			:=		FALSE);
+			END_IF
+			
+			IF THIS^.fbStateMachineManual.StateComplete THEN
+				THIS^.fbStateMachineManual.StateComplete		:=		FALSE;
+			END_IF
+			
+		E_PMLState.RESETTING:
+		
+			IF NOT bResetIsSetToTrue THEN
+				bResetIsSetToTrue		:=	TRUE;
+				fbSeparatingModule.Reset(	bReset		:=		TRUE);
+				fbMetalSortingModule.Reset(	bReset		:=		TRUE);
+				fbPlasticSortingModule.Reset(bReset 	:=		TRUE);
+			END_IF
+				
+			IF fbSeparatingModule.bState_ResetDone AND fbMetalSortingModule.bState_ResetDone AND fbPlasticSortingModule.bState_ResetDone AND
+				fbSeparatingModule.bState_BarrierAtBasePos AND fbSeparatingModule.bState_ClampAtBasePos AND fbMetalSortingModule.bState_CylAtBasePos AND fbPlasticSortingModule.bState_CylAtBasePos THEN
+					nBoxesOnTransport					:=	0;
+					fbStateMachineMaintenance.StateComplete	:=	TRUE;
+			END_IF
+	END_CASE]]></ST>
+      </Implementation>
+    </Method>
+    <Method Name="Operating_SemiAutomatic" Id="{2e013eba-aa9c-4402-a095-1c52f483942e}">
+      <Declaration><![CDATA[METHOD PRIVATE Operating_SemiAutomatic
+VAR_INPUT
+END_VAR
+]]></Declaration>
+      <Implementation>
+        <ST><![CDATA[
+	CASE e_PMLState OF
+		
+		E_PMLState.IDLE:
+			IF bResetIsSetToTrue THEN
+				bResetIsSetToTrue		:=		FALSE;
+				fbSeparatingModule.Reset(			bReset			:=	FALSE);
+				fbMetalSortingModule.Reset(			bReset			:=	FALSE);
+				fbPlasticSortingModule.Reset(		bReset			:=	FALSE);
+				
+				THIS^.fbStateMachineAuto.StateComplete				:=	FALSE;
+			END_IF
+		
+		E_PMLState.STARTING:
+			IF NOT bStartingIsSetToTrue THEN
+				bStartingIsSetToTrue		:=		TRUE;
+				fbSeparatingModule.Starting(		bStarting		:=	TRUE);
+				fbMetalSortingModule.Starting(		bStarting		:=	TRUE);
+				fbPlasticSortingModule.Starting(	bStarting		:=	TRUE);
+			END_IF
+			
+			IF fbSeparatingModule.bState_StartingDone AND fbMetalSortingModule.bState_StartingDone AND fbPlasticSortingModule.bState_StartingDone THEN
+				THIS^.fbStateMachineSemiAuto.StateComplete		:=		TRUE;
+			END_IF
+			
+		E_PMLState.EXECUTE:
+			IF bStartingIsSetToTrue	THEN
+				bStartingIsSetToTrue		:=		FALSE;
+				fbSeparatingModule.Starting(		bStarting		:=	FALSE);
+				fbMetalSortingModule.Starting(		bStarting		:=	FALSE);
+				fbPlasticSortingModule.Starting(	bStarting		:=	FALSE);
+				
+				THIS^.fbStateMachineAuto.StateComplete				:=	FALSE;
+			END_IF
+			
+				fbSeparatingModule.Semiautomatic();
+				fbMetalSortingModule.Semiautomatic();
+				fbPlasticSortingModule.Semiautomatic();
+				
+			IF fbTriggerSeparated.Q THEN
+				nBoxesOnTransport		:=		nBoxesOnTransport	+	1;
+			END_IF
+			
+			IF fbTriggerMetalSorted	THEN
+				nBoxesOnTransport		:=		nBoxesOnTransport	-	1;
+			END_IF
+			
+			IF fbTriggerPlasticSorted THEN
+				nBoxesOnTransport		:=		nBoxesOnTransport	-	1;
+			END_IF
+		
+		E_PMLState.ABORTING:
+			IF NOT bHaltIsSetToTrue THEN
+				bHaltIsSetToTrue		:=		TRUE;
+				fbSeparatingModule.Stop(			bStop			:=	TRUE);
+				fbMetalSortingModule.Stop(			bStop			:=	TRUE);
+				fbPlasticSortingModule.Stop(		bStop			:=	TRUE);
+			END_IF
+			
+			IF fbSeparatingModule.bState_HaltDone AND fbMetalSortingModule.bState_HaltDone AND fbPlasticSortingModule.bState_HaltDone THEN
+				THIS^.fbStateMachineSemiAuto.StateComplete			:=	TRUE;
+			END_IF
+			
+		E_PMLState.ABORTED:
+			IF bHaltIsSetToTrue THEN
+				bHaltIsSetToTrue		:=		FALSE;
+				fbSeparatingModule.Stop(			bStop			:=	FALSE);
+				fbMetalSortingModule.Stop(			bStop			:=	FALSE);
+				fbPlasticSortingModule.Stop(		bStop			:=	FALSE);
+			END_IF
+			
+			IF THIS^.fbStateMachineSemiAuto.StateComplete THEN
+				THIS^.fbStateMachineSemiAuto.StateComplete			:=	FALSE;
+			END_IF
+			
+		E_PMLState.CLEARING:
+			THIS^.fbStateMachineSemiAuto.StateComplete		:=	TRUE;
+			
+		E_PMLState.STOPPING:
+			IF fbTriggerSeparated.Q THEN
+				nBoxesOnTransport		:=		nBoxesOnTransport	+	1;
+			END_IF
+			
+			IF fbTriggerMetalSorted	THEN
+				nBoxesOnTransport		:=		nBoxesOnTransport	-	1;
+			END_IF
+			
+			IF fbTriggerPlasticSorted THEN
+				nBoxesOnTransport		:=		nBoxesOnTransport	-	1;
+			END_IF
+			
+			IF nBoxesOnTransport = 0 AND NOT bHaltIsSetToTrue THEN
+				bHaltIsSetToTrue		:=		TRUE;
+				fbSeparatingModule.Stop(	bStop		:=		TRUE);
+				fbMetalSortingModule.Stop(	bStop		:=		TRUE);
+				fbPlasticSortingModule.Stop(bStop		:=		TRUE);
+			END_IF
+			
+			IF fbSeparatingModule.bState_HaltDone AND fbMetalSortingModule.bState_HaltDone AND fbPlasticSortingModule.bState_HaltDone THEN
+				THIS^.fbStateMachineSemiAuto.StateComplete			:=	TRUE;
+			END_IF
+		
+		E_PMLState.STOPPED:
+			IF bHaltIsSetToTrue THEN
+				bHaltIsSetToTrue		:=		FALSE;
+				fbSeparatingModule.Stop(			bStop			:=	FALSE);
+				fbMetalSortingModule.Stop(			bStop			:=	FALSE);
+				fbPlasticSortingModule.Stop(		bStop			:=	FALSE);
+			END_IF
+			
+			IF THIS^.fbStateMachineSemiAuto.StateComplete THEN
+				THIS^.fbStateMachineSemiAuto.StateComplete			:=	FALSE;
+			END_IF
+		
+		E_PMLState.RESETTING:
+			IF NOT bResetIsSetToTrue THEN
+				bResetIsSetToTrue		:=		TRUE;
+				fbSeparatingModule.Reset(	bReset		:=		TRUE);
+				fbMetalSortingModule.Reset(	bReset		:=		TRUE);
+				fbPlasticSortingModule.Reset(bReset 	:=		TRUE);
+			END_IF
+			
+			IF fbSeparatingModule.bState_ResetDone AND fbMetalSortingModule.bState_ResetDone AND fbPlasticSortingModule.bState_StartingDone AND
+				fbSeparatingModule.bState_BarrierAtBasePos AND fbSeparatingModule.bState_ClampAtBasePos AND
+				fbMetalSortingModule.bState_CylAtBasePos AND fbPlasticSortingModule.bState_CylAtBasePos THEN
+				nBoxesOnTransport							:=		0;
+				THIS^.fbStateMachineSemiAuto.StateComplete	:=		TRUE;
+			END_IF
+	END_CASE]]></ST>
       </Implementation>
     </Method>
     <LineIds Name="FB_Machine">
+      <LineId Id="129" Count="0" />
       <LineId Id="9" Count="0" />
+      <LineId Id="130" Count="5" />
+      <LineId Id="137" Count="0" />
+      <LineId Id="139" Count="1" />
+      <LineId Id="138" Count="0" />
+      <LineId Id="136" Count="0" />
+      <LineId Id="141" Count="12" />
+      <LineId Id="155" Count="18" />
+      <LineId Id="178" Count="1" />
+      <LineId Id="174" Count="3" />
     </LineIds>
-    <LineIds Name="FB_Machine.Enable">
+    <LineIds Name="FB_Machine.General_Enable">
       <LineId Id="6" Count="0" />
       <LineId Id="5" Count="0" />
       <LineId Id="7" Count="8" />
@@ -397,15 +1028,70 @@ END_VAR
       <LineId Id="64" Count="1" />
       <LineId Id="62" Count="1" />
     </LineIds>
+    <LineIds Name="FB_Machine.General_Init">
+      <LineId Id="26" Count="0" />
+      <LineId Id="6" Count="0" />
+      <LineId Id="5" Count="0" />
+      <LineId Id="45" Count="0" />
+      <LineId Id="23" Count="0" />
+      <LineId Id="25" Count="0" />
+      <LineId Id="49" Count="2" />
+      <LineId Id="16" Count="1" />
+      <LineId Id="20" Count="0" />
+      <LineId Id="18" Count="0" />
+      <LineId Id="21" Count="0" />
+      <LineId Id="11" Count="0" />
+      <LineId Id="52" Count="2" />
+      <LineId Id="47" Count="0" />
+      <LineId Id="55" Count="0" />
+      <LineId Id="48" Count="0" />
+      <LineId Id="39" Count="0" />
+      <LineId Id="37" Count="0" />
+      <LineId Id="33" Count="2" />
+      <LineId Id="42" Count="1" />
+      <LineId Id="41" Count="0" />
+      <LineId Id="10" Count="0" />
+      <LineId Id="56" Count="5" />
+      <LineId Id="27" Count="0" />
+      <LineId Id="62" Count="0" />
+      <LineId Id="66" Count="0" />
+      <LineId Id="28" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_Machine.General_ModuleInputs">
+      <LineId Id="6" Count="0" />
+      <LineId Id="5" Count="0" />
+      <LineId Id="7" Count="0" />
+      <LineId Id="15" Count="1" />
+      <LineId Id="18" Count="0" />
+      <LineId Id="17" Count="0" />
+      <LineId Id="19" Count="0" />
+      <LineId Id="11" Count="0" />
+      <LineId Id="20" Count="0" />
+      <LineId Id="8" Count="1" />
+      <LineId Id="21" Count="2" />
+      <LineId Id="12" Count="0" />
+      <LineId Id="10" Count="0" />
+      <LineId Id="24" Count="2" />
+      <LineId Id="13" Count="1" />
+      <LineId Id="29" Count="0" />
+      <LineId Id="27" Count="0" />
+      <LineId Id="32" Count="0" />
+      <LineId Id="28" Count="0" />
+    </LineIds>
     <LineIds Name="FB_Machine.General_Requests">
       <LineId Id="21" Count="0" />
       <LineId Id="6" Count="0" />
       <LineId Id="5" Count="0" />
       <LineId Id="7" Count="2" />
       <LineId Id="11" Count="0" />
-      <LineId Id="13" Count="3" />
+      <LineId Id="49" Count="0" />
+      <LineId Id="13" Count="1" />
+      <LineId Id="50" Count="0" />
+      <LineId Id="15" Count="1" />
       <LineId Id="12" Count="0" />
-      <LineId Id="17" Count="3" />
+      <LineId Id="17" Count="2" />
+      <LineId Id="51" Count="0" />
+      <LineId Id="20" Count="0" />
       <LineId Id="10" Count="0" />
       <LineId Id="22" Count="3" />
       <LineId Id="27" Count="5" />
@@ -443,55 +1129,263 @@ END_VAR
       <LineId Id="20" Count="0" />
       <LineId Id="41" Count="3" />
     </LineIds>
-    <LineIds Name="FB_Machine.Init">
-      <LineId Id="26" Count="0" />
+    <LineIds Name="FB_Machine.General_StateMachine">
       <LineId Id="6" Count="0" />
       <LineId Id="5" Count="0" />
-      <LineId Id="45" Count="0" />
-      <LineId Id="23" Count="0" />
-      <LineId Id="25" Count="0" />
-      <LineId Id="49" Count="2" />
-      <LineId Id="16" Count="1" />
-      <LineId Id="20" Count="0" />
-      <LineId Id="18" Count="0" />
-      <LineId Id="21" Count="0" />
-      <LineId Id="11" Count="0" />
-      <LineId Id="52" Count="2" />
-      <LineId Id="47" Count="0" />
-      <LineId Id="55" Count="0" />
-      <LineId Id="48" Count="0" />
-      <LineId Id="39" Count="0" />
-      <LineId Id="37" Count="0" />
-      <LineId Id="33" Count="2" />
-      <LineId Id="42" Count="1" />
-      <LineId Id="41" Count="0" />
+      <LineId Id="7" Count="1" />
       <LineId Id="10" Count="0" />
-      <LineId Id="56" Count="5" />
-      <LineId Id="27" Count="0" />
-      <LineId Id="62" Count="0" />
-      <LineId Id="66" Count="0" />
-      <LineId Id="28" Count="0" />
+      <LineId Id="20" Count="5" />
+      <LineId Id="49" Count="0" />
+      <LineId Id="51" Count="0" />
+      <LineId Id="50" Count="0" />
+      <LineId Id="18" Count="0" />
+      <LineId Id="11" Count="0" />
+      <LineId Id="27" Count="5" />
+      <LineId Id="26" Count="0" />
+      <LineId Id="12" Count="0" />
+      <LineId Id="52" Count="2" />
+      <LineId Id="13" Count="0" />
+      <LineId Id="33" Count="5" />
+      <LineId Id="14" Count="0" />
+      <LineId Id="56" Count="0" />
+      <LineId Id="39" Count="0" />
+      <LineId Id="55" Count="0" />
+      <LineId Id="57" Count="0" />
+      <LineId Id="15" Count="0" />
+      <LineId Id="40" Count="5" />
+      <LineId Id="16" Count="1" />
+      <LineId Id="58" Count="1" />
+      <LineId Id="9" Count="0" />
     </LineIds>
-    <LineIds Name="FB_Machine.ModuleInputs">
+    <LineIds Name="FB_Machine.Operating_Automatic">
+      <LineId Id="6" Count="0" />
+      <LineId Id="5" Count="0" />
+      <LineId Id="58" Count="0" />
+      <LineId Id="12" Count="2" />
+      <LineId Id="16" Count="2" />
+      <LineId Id="20" Count="0" />
+      <LineId Id="19" Count="0" />
+      <LineId Id="15" Count="0" />
+      <LineId Id="57" Count="0" />
+      <LineId Id="7" Count="0" />
+      <LineId Id="9" Count="1" />
+      <LineId Id="21" Count="0" />
+      <LineId Id="23" Count="3" />
+      <LineId Id="142" Count="0" />
+      <LineId Id="29" Count="0" />
+      <LineId Id="28" Count="0" />
+      <LineId Id="56" Count="0" />
+      <LineId Id="11" Count="0" />
+      <LineId Id="30" Count="1" />
+      <LineId Id="35" Count="1" />
+      <LineId Id="34" Count="0" />
+      <LineId Id="37" Count="1" />
+      <LineId Id="32" Count="1" />
+      <LineId Id="39" Count="6" />
+      <LineId Id="49" Count="0" />
+      <LineId Id="46" Count="2" />
+      <LineId Id="50" Count="3" />
+      <LineId Id="55" Count="0" />
+      <LineId Id="54" Count="0" />
+      <LineId Id="59" Count="1" />
+      <LineId Id="62" Count="0" />
+      <LineId Id="64" Count="10" />
+      <LineId Id="77" Count="1" />
+      <LineId Id="76" Count="0" />
+      <LineId Id="75" Count="0" />
+      <LineId Id="79" Count="9" />
+      <LineId Id="94" Count="1" />
+      <LineId Id="97" Count="0" />
+      <LineId Id="96" Count="0" />
+      <LineId Id="98" Count="1" />
+      <LineId Id="101" Count="0" />
+      <LineId Id="100" Count="0" />
+      <LineId Id="102" Count="1" />
+      <LineId Id="105" Count="0" />
+      <LineId Id="104" Count="0" />
+      <LineId Id="106" Count="0" />
+      <LineId Id="108" Count="2" />
+      <LineId Id="107" Count="0" />
+      <LineId Id="111" Count="4" />
+      <LineId Id="89" Count="0" />
+      <LineId Id="91" Count="0" />
+      <LineId Id="118" Count="0" />
+      <LineId Id="120" Count="2" />
+      <LineId Id="119" Count="0" />
+      <LineId Id="123" Count="3" />
+      <LineId Id="116" Count="0" />
+      <LineId Id="92" Count="1" />
+      <LineId Id="127" Count="0" />
+      <LineId Id="129" Count="3" />
+      <LineId Id="128" Count="0" />
+      <LineId Id="133" Count="2" />
+      <LineId Id="137" Count="1" />
+      <LineId Id="136" Count="0" />
+      <LineId Id="117" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_Machine.Operating_Maintenance">
       <LineId Id="6" Count="0" />
       <LineId Id="5" Count="0" />
       <LineId Id="7" Count="0" />
-      <LineId Id="15" Count="1" />
-      <LineId Id="18" Count="0" />
-      <LineId Id="17" Count="0" />
-      <LineId Id="19" Count="0" />
-      <LineId Id="11" Count="0" />
-      <LineId Id="20" Count="0" />
-      <LineId Id="8" Count="1" />
-      <LineId Id="21" Count="2" />
-      <LineId Id="12" Count="0" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="28" Count="1" />
+      <LineId Id="31" Count="2" />
+      <LineId Id="30" Count="0" />
+      <LineId Id="35" Count="0" />
+      <LineId Id="34" Count="0" />
+      <LineId Id="26" Count="1" />
       <LineId Id="10" Count="0" />
-      <LineId Id="24" Count="2" />
-      <LineId Id="13" Count="1" />
-      <LineId Id="29" Count="0" />
-      <LineId Id="27" Count="0" />
-      <LineId Id="32" Count="0" />
-      <LineId Id="28" Count="0" />
+      <LineId Id="37" Count="0" />
+      <LineId Id="39" Count="2" />
+      <LineId Id="38" Count="0" />
+      <LineId Id="42" Count="0" />
+      <LineId Id="44" Count="2" />
+      <LineId Id="36" Count="0" />
+      <LineId Id="11" Count="1" />
+      <LineId Id="48" Count="0" />
+      <LineId Id="51" Count="1" />
+      <LineId Id="50" Count="0" />
+      <LineId Id="57" Count="1" />
+      <LineId Id="49" Count="0" />
+      <LineId Id="47" Count="0" />
+      <LineId Id="54" Count="2" />
+      <LineId Id="53" Count="0" />
+      <LineId Id="13" Count="0" />
+      <LineId Id="59" Count="1" />
+      <LineId Id="63" Count="1" />
+      <LineId Id="62" Count="0" />
+      <LineId Id="61" Count="0" />
+      <LineId Id="65" Count="3" />
+      <LineId Id="14" Count="1" />
+      <LineId Id="69" Count="0" />
+      <LineId Id="72" Count="2" />
+      <LineId Id="70" Count="1" />
+      <LineId Id="75" Count="3" />
+      <LineId Id="16" Count="0" />
+      <LineId Id="20" Count="0" />
+      <LineId Id="22" Count="0" />
+      <LineId Id="80" Count="0" />
+      <LineId Id="79" Count="0" />
+      <LineId Id="23" Count="0" />
+      <LineId Id="82" Count="8" />
+      <LineId Id="81" Count="0" />
+      <LineId Id="24" Count="1" />
+      <LineId Id="91" Count="8" />
+      <LineId Id="21" Count="0" />
+      <LineId Id="100" Count="0" />
+      <LineId Id="17" Count="1" />
+      <LineId Id="102" Count="1" />
+      <LineId Id="106" Count="8" />
+      <LineId Id="105" Count="0" />
+      <LineId Id="8" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_Machine.Operating_Manual">
+      <LineId Id="6" Count="0" />
+      <LineId Id="5" Count="0" />
+      <LineId Id="7" Count="0" />
+      <LineId Id="9" Count="0" />
+      <LineId Id="28" Count="1" />
+      <LineId Id="31" Count="2" />
+      <LineId Id="30" Count="0" />
+      <LineId Id="35" Count="0" />
+      <LineId Id="34" Count="0" />
+      <LineId Id="26" Count="1" />
+      <LineId Id="10" Count="0" />
+      <LineId Id="37" Count="0" />
+      <LineId Id="39" Count="2" />
+      <LineId Id="38" Count="0" />
+      <LineId Id="42" Count="0" />
+      <LineId Id="44" Count="2" />
+      <LineId Id="36" Count="0" />
+      <LineId Id="11" Count="1" />
+      <LineId Id="48" Count="0" />
+      <LineId Id="51" Count="1" />
+      <LineId Id="50" Count="0" />
+      <LineId Id="57" Count="1" />
+      <LineId Id="49" Count="0" />
+      <LineId Id="47" Count="0" />
+      <LineId Id="54" Count="2" />
+      <LineId Id="53" Count="0" />
+      <LineId Id="13" Count="0" />
+      <LineId Id="59" Count="1" />
+      <LineId Id="63" Count="1" />
+      <LineId Id="62" Count="0" />
+      <LineId Id="61" Count="0" />
+      <LineId Id="65" Count="3" />
+      <LineId Id="14" Count="1" />
+      <LineId Id="69" Count="0" />
+      <LineId Id="72" Count="2" />
+      <LineId Id="70" Count="1" />
+      <LineId Id="75" Count="3" />
+      <LineId Id="16" Count="0" />
+      <LineId Id="20" Count="0" />
+      <LineId Id="22" Count="0" />
+      <LineId Id="80" Count="0" />
+      <LineId Id="79" Count="0" />
+      <LineId Id="23" Count="0" />
+      <LineId Id="82" Count="8" />
+      <LineId Id="81" Count="0" />
+      <LineId Id="24" Count="1" />
+      <LineId Id="91" Count="8" />
+      <LineId Id="21" Count="0" />
+      <LineId Id="100" Count="0" />
+      <LineId Id="17" Count="1" />
+      <LineId Id="102" Count="1" />
+      <LineId Id="106" Count="8" />
+      <LineId Id="105" Count="0" />
+      <LineId Id="8" Count="0" />
+    </LineIds>
+    <LineIds Name="FB_Machine.Operating_SemiAutomatic">
+      <LineId Id="6" Count="0" />
+      <LineId Id="5" Count="0" />
+      <LineId Id="7" Count="0" />
+      <LineId Id="9" Count="2" />
+      <LineId Id="13" Count="4" />
+      <LineId Id="12" Count="0" />
+      <LineId Id="18" Count="3" />
+      <LineId Id="23" Count="2" />
+      <LineId Id="22" Count="0" />
+      <LineId Id="26" Count="7" />
+      <LineId Id="35" Count="4" />
+      <LineId Id="34" Count="0" />
+      <LineId Id="42" Count="7" />
+      <LineId Id="40" Count="0" />
+      <LineId Id="50" Count="6" />
+      <LineId Id="41" Count="0" />
+      <LineId Id="57" Count="2" />
+      <LineId Id="61" Count="2" />
+      <LineId Id="60" Count="0" />
+      <LineId Id="64" Count="7" />
+      <LineId Id="74" Count="1" />
+      <LineId Id="73" Count="0" />
+      <LineId Id="72" Count="0" />
+      <LineId Id="76" Count="8" />
+      <LineId Id="86" Count="9" />
+      <LineId Id="85" Count="0" />
+      <LineId Id="96" Count="2" />
+      <LineId Id="101" Count="1" />
+      <LineId Id="100" Count="0" />
+      <LineId Id="99" Count="0" />
+      <LineId Id="103" Count="0" />
+      <LineId Id="105" Count="1" />
+      <LineId Id="104" Count="0" />
+      <LineId Id="107" Count="3" />
+      <LineId Id="113" Count="1" />
+      <LineId Id="112" Count="0" />
+      <LineId Id="111" Count="0" />
+      <LineId Id="115" Count="0" />
+      <LineId Id="117" Count="1" />
+      <LineId Id="116" Count="0" />
+      <LineId Id="119" Count="3" />
+      <LineId Id="125" Count="1" />
+      <LineId Id="124" Count="0" />
+      <LineId Id="123" Count="0" />
+      <LineId Id="127" Count="1" />
+      <LineId Id="131" Count="0" />
+      <LineId Id="129" Count="0" />
+      <LineId Id="132" Count="1" />
+      <LineId Id="130" Count="0" />
+      <LineId Id="8" Count="0" />
     </LineIds>
   </POU>
 </TcPlcObject>
